@@ -15,11 +15,57 @@ namespace vcpkg::System
     int cmd_execute(const wchar_t* cmd_line)
     {
         // Flush stdout before launching external process
-        fflush(stdout);
+        _flushall();
+
+        const wchar_t* env[] = {
+            LR"(ALLUSERSPROFILE=C:\ProgramData)",
+            LR"(APPDATA=C:\Users\roschuma\AppData\Roaming)",
+            LR"(ChocolateyPath=C:\Chocolatey)",
+            LR"(CommonProgramFiles=C:\Program Files\Common Files)",
+            LR"(CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files)",
+            LR"(CommonProgramW6432=C:\Program Files\Common Files)",
+            LR"(COMPUTERNAME=ROSCHUMA-005D)",
+            LR"(ComSpec=C:\WINDOWS\system32\cmd.exe)",
+            LR"(HOMEDRIVE=C:)",
+            LR"(HOMEPATH=\Users\roschuma)",
+            LR"(LOCALAPPDATA=C:\Users\roschuma\AppData\Local)",
+            LR"(LOGONSERVER=\\ROSCHUMA-005D)",
+            LR"(MSMPI_BIN=C:\Program Files\Microsoft MPI\Bin\)",
+            LR"(NUMBER_OF_PROCESSORS=8)",
+            LR"(OneDrive=C:\Users\roschuma\OneDrive)",
+            LR"(OS=Windows_NT)",
+            LR"(Path=C:\Program Files\Microsoft MPI\Bin\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\Program Files\Git\cmd;C:\Program Files\Microsoft SQL Server\130\Tools\Binn\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\Users\roschuma\AppData\Local\Microsoft\WindowsApps;D:\src\vcpkg\toolsrc\x64\release;C:\Program Files (x86)\Microsoft VS Code\bin;C:\Program Files\CMake\bin;C:\Users\roschuma\AppData\Local\Pandoc\)",
+            LR"(PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL)",
+            LR"(PROCESSOR_ARCHITECTURE=AMD64)",
+            LR"(PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 60 Stepping 3, GenuineIntel)",
+            LR"(PROCESSOR_LEVEL=6)",
+            LR"(PROCESSOR_REVISION=3c03)",
+            LR"(ProgramData=C:\ProgramData)",
+            LR"(ProgramFiles=C:\Program Files)",
+            LR"(ProgramFiles(x86)=C:\Program Files (x86))",
+            LR"(ProgramW6432=C:\Program Files)",
+            LR"(PROMPT=$P$G)",
+            LR"(PSModulePath=C:\Users\roschuma\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules)",
+            LR"(PUBLIC=C:\Users\Public)",
+            LR"(SystemDrive=C:)",
+            LR"(SystemRoot=C:\WINDOWS)",
+            LR"(TEMP=C:\Users\roschuma\AppData\Local\Temp)",
+            LR"(TMP=C:\Users\roschuma\AppData\Local\Temp)",
+            LR"(USERDNSDOMAIN=redmond.corp.microsoft.com)",
+            LR"(USERDOMAIN=REDMOND)",
+            LR"(USERDOMAIN_ROAMINGPROFILE=REDMOND)",
+            LR"(USERNAME=roschuma)",
+            LR"(USERPROFILE=C:\Users\roschuma)",
+            LR"(VS140COMNTOOLS=C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\Tools\)",
+            LR"(windir=C:\WINDOWS)",
+            nullptr,
+        };
+
 
         // Basically we are wrapping it in quotes
         const std::wstring& actual_cmd_line = Strings::wformat(LR"###("%s")###", cmd_line);
-        int exit_code = _wsystem(actual_cmd_line.c_str());
+        //int exit_code = _wsystem(actual_cmd_line.c_str());
+        auto exit_code = _wspawnlpe(_P_WAIT, L"cmd.exe", L"cmd.exe", L"/c", actual_cmd_line.c_str(), nullptr, env);
         return exit_code;
     }
 

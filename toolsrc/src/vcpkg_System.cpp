@@ -34,7 +34,7 @@ namespace vcpkg::System
             LR"(NUMBER_OF_PROCESSORS=8)",
             LR"(OneDrive=C:\Users\roschuma\OneDrive)",
             LR"(OS=Windows_NT)",
-            LR"(Path=C:\Program Files\Microsoft MPI\Bin\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\Program Files\Git\cmd;C:\Program Files\Microsoft SQL Server\130\Tools\Binn\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\Users\roschuma\AppData\Local\Microsoft\WindowsApps;D:\src\vcpkg\toolsrc\x64\release;C:\Program Files (x86)\Microsoft VS Code\bin;C:\Program Files\CMake\bin;C:\Users\roschuma\AppData\Local\Pandoc\)",
+            LR"(Path=C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\Users\roschuma\AppData\Local\Microsoft\WindowsApps;C:\Program Files\CMake\bin)",
             LR"(PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL)",
             LR"(PROCESSOR_ARCHITECTURE=AMD64)",
             LR"(PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 60 Stepping 3, GenuineIntel)",

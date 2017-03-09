@@ -150,7 +150,7 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 3,3,0 };
         static const std::wstring version_check_arguments = L"";
 
-        const std::vector<fs::path> candidate_paths = { paths.downloads / "nuget-3.5.0", };
+        const std::vector<fs::path> candidate_paths = { paths.downloads / "nuget-3.5.0" / "nuget.exe", };
 
         return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }
@@ -160,9 +160,9 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 2,0,0 };
         static const std::wstring version_check_arguments = L"--version";
 
-        const std::vector<fs::path> candidate_paths = { paths.downloads / "MinGit-2.11.1-32-bit/cmd/git.exe",
-            Environment::get_ProgramFiles_platform_bitness() / "git/cmd/git.exe",
-            Environment::get_ProgramFiles_32_bit() / "git/cmd/git.exe" };
+        const std::vector<fs::path> candidate_paths = { paths.downloads / "MinGit-2.11.1-32-bit" / "cmd" / "git.exe",
+            Environment::get_ProgramFiles_platform_bitness() / "git" / "cmd" / "git.exe",
+            Environment::get_ProgramFiles_32_bit() / "git" / "cmd" / "git.exe" };
 
         return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }
@@ -172,9 +172,9 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 3,8,0 };
         static const std::wstring version_check_arguments = L"--version";
 
-        const std::vector<fs::path> candidate_paths = { downloaded_cmake_dir(paths),
-            Environment::get_ProgramFiles_platform_bitness() / "CMake/bin",
-            Environment::get_ProgramFiles_32_bit() / "CMake/bin" };
+        const std::vector<fs::path> candidate_paths = { downloaded_cmake_dir(paths) / "cmake.exe",
+            Environment::get_ProgramFiles_platform_bitness() / "CMake" / "bin" / "cmake.exe",
+            Environment::get_ProgramFiles_32_bit() / "CMake" / "bin" };
 
         return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }

@@ -47,18 +47,19 @@ namespace vcpkg::Commands::Build
 
         const fs::path ports_cmake_script_path = paths.ports_cmake;
         const Environment::vcvarsall_and_platform_toolset vcvarsall_bat = Environment::get_vcvarsall_bat(paths);
-        const std::wstring command = Strings::wformat(LR"("%s" %s >nul 2>&1 && set && "%s" -DCMD=BUILD -DPORT=%s -DTARGET_TRIPLET=%s -DVCPKG_PLATFORM_TOOLSET=%s "-DCURRENT_PORT_DIR=%s/." "-DGIT=%s" -P "%s")",
-                                                      vcvarsall_bat.path.native(),
-                                                      Strings::utf8_to_utf16(target_triplet.architecture()),
-                                                      cmake_exe_path->native(),
-                                                      Strings::utf8_to_utf16(source_paragraph.name),
-                                                      Strings::utf8_to_utf16(target_triplet.canonical_name()),
-                                                      vcvarsall_bat.platform_toolset,
-                                                      port_dir.generic_wstring(),
-                                                      git_exe_path->generic_wstring(),
-                                                      ports_cmake_script_path.generic_wstring());
+        const std::wstring cmd_set_environment = Strings::wformat(LR"("%s" %s >nul 2>&1)", vcvarsall_bat.path.native(), Strings::utf8_to_utf16(target_triplet.architecture()));
 
-        ElapsedTime timer = ElapsedTime::createStarted();
+        const std::wstring cmd_launch_cmake = CMakeCommandBuilder::start(*cmake_exe_path, ports_cmake_script_path).add_variable(L"CMD", L"BUILD")
+                                                                                                                  .add_variable(L"PORT", source_paragraph.name)
+                                                                                                                  .add_path(L"CURRENT_PORT_DIR", port_dir / "/.")
+                                                                                                                  .add_variable(L"TARGET_TRIPLET", target_triplet.canonical_name())
+                                                                                                                  .add_variable(L"VCPKG_PLATFORM_TOOLSET", vcvarsall_bat.platform_toolset)
+                                                                                                                  .add_path(L"GIT", *git_exe_path)
+                                                                                                                  .build();
+
+        const std::wstring command = Strings::wformat(LR"(%s && %s)", cmd_set_environment, cmd_launch_cmake);
+
+        const ElapsedTime timer = ElapsedTime::createStarted();
 
         int return_code = System::cmd_execute_clean(command);
         auto buildtimeus = timer.microseconds();

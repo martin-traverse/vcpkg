@@ -8,6 +8,51 @@
 
 namespace vcpkg::Environment
 {
+    static bool exists_and_has_equal_or_greater_version(const std::wstring& version_cmd, const std::array<int, 3>& expected_version)
+    {
+        static const std::regex re(R"###((\d+)\.(\d+)\.(\d+))###");
+
+        auto rc = System::cmd_execute_and_capture_output(Strings::wformat(L"%s 2>&1", version_cmd));
+        if (rc.exit_code != 0)
+        {
+            return false;
+        }
+
+        std::match_results<std::string::const_iterator> match;
+        auto found = std::regex_search(rc.output, match, re);
+        if (!found)
+        {
+            return false;
+        }
+
+        int d1 = atoi(match[1].str().c_str());
+        int d2 = atoi(match[2].str().c_str());
+        int d3 = atoi(match[3].str().c_str());
+        if (d1 > expected_version[0] || (d1 == expected_version[0] && d2 > expected_version[1]) || (d1 == expected_version[0] && d2 == expected_version[1] && d3 >= expected_version[2]))
+        {
+            // satisfactory version found
+            return true;
+        }
+
+        return false;
+    }
+
+    static optional<fs::path> find_if_has_equal_or_greater_version(const std::vector<fs::path>& candidate_paths, const std::wstring& version_check_arguments, const std::array<int, 3>& expected_version)
+    {
+        auto it = std::find_if(candidate_paths.cbegin(), candidate_paths.cend(), [&expected_version, version_check_arguments](const fs::path& p)
+                               {
+                                   const std::wstring cmd = Strings::wformat(L"%s %s", p.native(), version_check_arguments);
+                                   return exists_and_has_equal_or_greater_version(cmd, expected_version);
+                               });
+
+        if (it != candidate_paths.cend())
+        {
+            return std::make_unique<fs::path>(std::move(*it));
+        }
+
+        return nullptr;
+    }
+
     static void ensure_on_path(const std::array<int, 3>& version, const std::wstring& version_check_cmd, const std::wstring& install_cmd)
     {
         System::exit_code_and_output ec_data = System::cmd_execute_and_capture_output(version_check_cmd);
@@ -75,7 +120,6 @@ namespace vcpkg::Environment
         static const fs::path default_cmake_installation_dir = Environment::get_ProgramFiles_platform_bitness() / "CMake/bin";
         static const fs::path default_cmake_installation_dir_32 = Environment::get_ProgramFiles_32_bit() / "CMake/bin";
 
-        
         const std::wstring path_buf = Strings::wformat(L"%s;%s;%s;%s",
                                                        downloaded_cmake_dir(paths).native(),
                                                        *System::get_environmental_variable(L"PATH"),
@@ -101,45 +145,38 @@ namespace vcpkg::Environment
         ensure_on_path(nuget_version, version_check_cmd, install_cmd);
     }
 
-    //const fs::path& get_nuget_path(const vcpkg_paths& paths)
-    //{
-
-    //}
-
-    optional<fs::path> get_git_path(const vcpkg_paths & paths)
+    optional<fs::path> get_nuget_path(const vcpkg_paths& paths)
     {
-        fs::path path = paths.downloads / "MinGit-2.11.1-32-bit/cmd/git.exe";
+        static constexpr std::array<int, 3> expected_version = { 3,3,0 };
+        static const std::wstring version_check_arguments = L"";
 
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
+        const std::vector<fs::path> candidate_paths = { paths.downloads / "nuget-3.5.0", };
 
-        path = Environment::get_ProgramFiles_platform_bitness() / "git/cmd/git.exe";
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
+        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
+    }
 
-        path = Environment::get_ProgramFiles_32_bit() / "git/cmd/git.exe";
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
+    optional<fs::path> get_git_path(const vcpkg_paths& paths)
+    {
+        static constexpr std::array<int, 3> expected_version = { 2,0,0 };
+        static const std::wstring version_check_arguments = L"--version";
 
-        return nullptr;
+        const std::vector<fs::path> candidate_paths = { paths.downloads / "MinGit-2.11.1-32-bit/cmd/git.exe",
+            Environment::get_ProgramFiles_platform_bitness() / "git/cmd/git.exe",
+            Environment::get_ProgramFiles_32_bit() / "git/cmd/git.exe" };
+
+        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }
 
     optional<fs::path> get_cmake_path(const vcpkg_paths& paths)
     {
-        fs::path path = downloaded_cmake_dir(paths) / "cmake.exe";
+        static constexpr std::array<int, 3> expected_version = { 3,8,0 };
+        static const std::wstring version_check_arguments = L"--version";
 
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
+        const std::vector<fs::path> candidate_paths = { downloaded_cmake_dir(paths),
+            Environment::get_ProgramFiles_platform_bitness() / "CMake/bin",
+            Environment::get_ProgramFiles_32_bit() / "CMake/bin" };
 
-        path = Environment::get_ProgramFiles_platform_bitness() / "CMake/bin/cmake.exe";
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
-
-        path = Environment::get_ProgramFiles_32_bit() / "CMake/bin/cmake.exe";
-        if (fs::exists(path))
-            return std::make_unique<fs::path>(std::move(path));
-
-        return nullptr;
+        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }
 
     static std::vector<std::string> get_VS2017_installation_instances(const vcpkg_paths& paths)

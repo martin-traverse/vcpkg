@@ -91,6 +91,26 @@ namespace vcpkg::Environment
         return System::create_powershell_script_cmd(script, Strings::wformat(L"-Dependency %s", tool_name));
     }
 
+    // TODO: Maybe should not be optional?
+    static optional<fs::path> fetch_dependency(const vcpkg_paths& paths, const std::wstring& tool_name, const fs::path& expected_downloaded_path)
+    {
+        const fs::path script = paths.scripts / "fetchDependency.ps1";
+        auto install_cmd = System::create_powershell_script_cmd(script, Strings::wformat(L"-Dependency %s", tool_name));
+        System::exit_code_and_output rc = System::cmd_execute_and_capture_output(install_cmd);
+        if (rc.exit_code)
+        {
+            System::println(System::color::error, "Launching powershell failed or was denied");
+            TrackProperty("error", "powershell install failed");
+            TrackProperty("installcmd", install_cmd);
+            exit(rc.exit_code);
+        }
+
+        fs::path actual_downloaded_path = rc.output;
+        Checks::check_exit(expected_downloaded_path == actual_downloaded_path, "Expected dependency downloaded path to be %s, but was %s",
+                           expected_downloaded_path.generic_string(), actual_downloaded_path.generic_string());
+        return std::make_unique<fs::path>(std::move(actual_downloaded_path));
+    }
+
     void ensure_git_on_path(const vcpkg_paths& paths)
     {
         static const fs::path default_git_installation_dir = Environment::get_ProgramFiles_platform_bitness() / "git/cmd";
@@ -150,9 +170,15 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 3,3,0 };
         static const std::wstring version_check_arguments = L"";
 
-        const std::vector<fs::path> candidate_paths = { paths.downloads / "nuget-3.5.0" / "nuget.exe", };
+        const fs::path downloaded_copy = paths.downloads / "nuget-3.5.0" / "nuget.exe";
+        const std::vector<fs::path> candidate_paths = { downloaded_copy };
 
-        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
+        if (auto ret = find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version))
+        {
+            return ret;
+        }
+
+        return fetch_dependency(paths, L"nuget", downloaded_copy);
     }
 
     optional<fs::path> get_git_path(const vcpkg_paths& paths)
@@ -160,11 +186,17 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 2,0,0 };
         static const std::wstring version_check_arguments = L"--version";
 
-        const std::vector<fs::path> candidate_paths = { paths.downloads / "MinGit-2.11.1-32-bit" / "cmd" / "git.exe",
+        const fs::path downloaded_copy = paths.downloads / "MinGit-2.11.1-32-bit" / "cmd" / "git.exe";
+        const std::vector<fs::path> candidate_paths = { downloaded_copy,
             Environment::get_ProgramFiles_platform_bitness() / "git" / "cmd" / "git.exe",
             Environment::get_ProgramFiles_32_bit() / "git" / "cmd" / "git.exe" };
 
-        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
+        if (auto ret = find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version))
+        {
+            return ret;
+        }
+
+        return fetch_dependency(paths, L"git", downloaded_copy);
     }
 
     optional<fs::path> get_cmake_path(const vcpkg_paths& paths)
@@ -172,11 +204,17 @@ namespace vcpkg::Environment
         static constexpr std::array<int, 3> expected_version = { 3,8,0 };
         static const std::wstring version_check_arguments = L"--version";
 
-        const std::vector<fs::path> candidate_paths = { downloaded_cmake_dir(paths) / "cmake.exe",
+        const fs::path downloaded_copy = downloaded_cmake_dir(paths) / "cmake.exe";
+        const std::vector<fs::path> candidate_paths = { downloaded_copy,
             Environment::get_ProgramFiles_platform_bitness() / "CMake" / "bin" / "cmake.exe",
             Environment::get_ProgramFiles_32_bit() / "CMake/bin" };
 
-        return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
+        if (auto ret = find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version))
+        {
+            return ret;
+        }
+
+        return fetch_dependency(paths, L"cmake", downloaded_copy);
     }
 
     static std::vector<std::string> get_VS2017_installation_instances(const vcpkg_paths& paths)

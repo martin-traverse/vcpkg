@@ -68,14 +68,16 @@ namespace vcpkg::Environment
         ensure_on_path(git_version, version_check_cmd, install_cmd);
     }
 
+    fs::path downloaded_cmake_dir(const vcpkg_paths& paths) { return paths.downloads / "cmake-3.8.0-rc1-win32-x86" / "bin"; }
+
     void ensure_cmake_on_path(const vcpkg_paths& paths)
     {
         static const fs::path default_cmake_installation_dir = Environment::get_ProgramFiles_platform_bitness() / "CMake/bin";
         static const fs::path default_cmake_installation_dir_32 = Environment::get_ProgramFiles_32_bit() / "CMake/bin";
 
-        const fs::path downloaded_cmake = paths.downloads / "cmake-3.8.0-rc1-win32-x86" / "bin";
+        
         const std::wstring path_buf = Strings::wformat(L"%s;%s;%s;%s",
-                                                       downloaded_cmake.native(),
+                                                       downloaded_cmake_dir(paths).native(),
                                                        *System::get_environmental_variable(L"PATH"),
                                                        default_cmake_installation_dir.native(),
                                                        default_cmake_installation_dir_32.native());
@@ -97,6 +99,47 @@ namespace vcpkg::Environment
         static const std::wstring version_check_cmd = L"nuget 2>&1";
         const std::wstring install_cmd = create_default_install_cmd(paths, L"nuget");
         ensure_on_path(nuget_version, version_check_cmd, install_cmd);
+    }
+
+    //const fs::path& get_nuget_path(const vcpkg_paths& paths)
+    //{
+
+    //}
+
+    optional<fs::path> get_git_path(const vcpkg_paths & paths)
+    {
+        fs::path path = paths.downloads / "MinGit-2.11.1-32-bit/cmd/git.exe";
+
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        path = Environment::get_ProgramFiles_platform_bitness() / "git/cmd/git.exe";
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        path = Environment::get_ProgramFiles_32_bit() / "git/cmd/git.exe";
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        return nullptr;
+    }
+
+    optional<fs::path> get_cmake_path(const vcpkg_paths& paths)
+    {
+        fs::path path = downloaded_cmake_dir(paths) / "cmake.exe";
+
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        path = Environment::get_ProgramFiles_platform_bitness() / "CMake/bin/cmake.exe";
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        path = Environment::get_ProgramFiles_32_bit() / "CMake/bin/cmake.exe";
+        if (fs::exists(path))
+            return std::make_unique<fs::path>(std::move(path));
+
+        return nullptr;
     }
 
     static std::vector<std::string> get_VS2017_installation_instances(const vcpkg_paths& paths)

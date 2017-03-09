@@ -14,8 +14,14 @@ namespace vcpkg::System
         std::string output;
     };
 
-    int cmd_execute(const wchar_t* cmd_line);
 
+    int cmd_execute_clean(const wchar_t* cmd_line);
+    inline int cmd_execute_clean(const std::wstring& cmd_line)
+    {
+        return cmd_execute_clean(cmd_line.c_str());
+    }
+
+    int cmd_execute(const wchar_t* cmd_line);
     inline int cmd_execute(const std::wstring& cmd_line)
     {
         return cmd_execute(cmd_line.c_str());

@@ -39,24 +39,28 @@ namespace vcpkg::Commands::Build
             }
         }
 
-        // If these environment variables are set while running the VS2017 developer prompt, it will not correctly initialize the build environment.
-        System::set_environmental_variable(L"VSINSTALLDIR", L"");
-        System::set_environmental_variable(L"DevEnvDir", L"");
+        optional<fs::path> cmake_exe_path = Environment::get_cmake_path(paths);
+        Checks::check_exit(cmake_exe_path != nullptr);
+
+        optional<fs::path> git_exe_path = Environment::get_git_path(paths);
+        Checks::check_exit(git_exe_path != nullptr);
 
         const fs::path ports_cmake_script_path = paths.ports_cmake;
         const Environment::vcvarsall_and_platform_toolset vcvarsall_bat = Environment::get_vcvarsall_bat(paths);
-        const std::wstring command = Strings::wformat(LR"("%s" %s >nul 2>&1 && set && cmake -DCMD=BUILD -DPORT=%s -DTARGET_TRIPLET=%s -DVCPKG_PLATFORM_TOOLSET=%s "-DCURRENT_PORT_DIR=%s/." -P "%s")",
+        const std::wstring command = Strings::wformat(LR"("%s" %s >nul 2>&1 && set && "%s" -DCMD=BUILD -DPORT=%s -DTARGET_TRIPLET=%s -DVCPKG_PLATFORM_TOOLSET=%s "-DCURRENT_PORT_DIR=%s/." "-DGIT=%s" -P "%s")",
                                                       vcvarsall_bat.path.native(),
                                                       Strings::utf8_to_utf16(target_triplet.architecture()),
+                                                      cmake_exe_path->native(),
                                                       Strings::utf8_to_utf16(source_paragraph.name),
                                                       Strings::utf8_to_utf16(target_triplet.canonical_name()),
                                                       vcvarsall_bat.platform_toolset,
                                                       port_dir.generic_wstring(),
+                                                      git_exe_path->generic_wstring(),
                                                       ports_cmake_script_path.generic_wstring());
 
         ElapsedTime timer = ElapsedTime::createStarted();
 
-        int return_code = System::cmd_execute(command);
+        int return_code = System::cmd_execute_clean(command);
         auto buildtimeus = timer.microseconds();
         TrackMetric("buildtimeus-" + spec.toString(), buildtimeus);
 
@@ -133,7 +137,7 @@ namespace vcpkg::Commands::Build
         Checks::check_exit(!maybe_spgh.error_code(), "Could not find package named %s: %s", spec, maybe_spgh.error_code().message());
         const SourceParagraph& spgh = *maybe_spgh.get();
 
-        Environment::ensure_utilities_on_path(paths);
+        //Environment::ensure_utilities_on_path(paths);
         StatusParagraphs status_db = database_load_check(paths);
         const BuildResult result = build_package(spgh, spec, paths, paths.port_dir(spec), status_db);
         if (result == BuildResult::CASCADED_DUE_TO_MISSING_DEPENDENCIES)

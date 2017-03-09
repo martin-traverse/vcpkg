@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "vcpkg_System.h"
+#include "vcpkg_Checks.h"
 
 namespace vcpkg::System
 {
@@ -12,60 +13,85 @@ namespace vcpkg::System
         return fs::path(buf, buf + bytes);
     }
 
+    int cmd_execute_clean(const wchar_t* cmd_line)
+    {
+        std::vector<std::wstring> env_wstrings =
+        {
+            L"ALLUSERSPROFILE",
+            L"APPDATA",
+            L"CommonProgramFiles",
+            L"CommonProgramFiles(x86)",
+            L"CommonProgramW6432",
+            L"COMPUTERNAME",
+            L"ComSpec",
+            L"HOMEDRIVE",
+            L"HOMEPATH",
+            L"LOCALAPPDATA",
+            L"LOGONSERVER",
+            L"NUMBER_OF_PROCESSORS",
+            L"OS",
+            L"PATHEXT",
+            L"PROCESSOR_ARCHITECTURE",
+            L"PROCESSOR_IDENTIFIER",
+            L"PROCESSOR_LEVEL",
+            L"PROCESSOR_REVISION",
+            L"ProgramData",
+            L"ProgramFiles",
+            L"ProgramFiles(x86)",
+            L"ProgramW6432",
+            L"PROMPT",
+            L"PSModulePath",
+            L"PUBLIC",
+            L"SystemDrive",
+            L"SystemRoot",
+            L"TEMP",
+            L"TMP",
+            L"USERDNSDOMAIN",
+            L"USERDOMAIN",
+            L"USERDOMAIN_ROAMINGPROFILE",
+            L"USERNAME",
+            L"USERPROFILE",
+            L"windir",
+            // Enables proxy information to be passed to Curl, the underlying download library in cmake.exe
+            L"HTTP_PROXY",
+            L"HTTPS_PROXY",
+        };
+
+        // Flush stdout before launching external process
+        _flushall();
+
+        std::vector<const wchar_t*> env_cstr;
+        env_cstr.reserve(env_wstrings.size() + 2);
+
+        for (auto&& env_wstring : env_wstrings)
+        {
+            auto v = System::get_environmental_variable(env_wstring.c_str());
+            if (v == nullptr || v->empty())
+                continue;
+
+            env_wstring.push_back(L'=');
+            env_wstring.append(*v);
+            env_cstr.push_back(env_wstring.c_str());
+        }
+
+        env_cstr.push_back(LR"(Path=C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\WindowsPowerShell\v1.0\)");
+        env_cstr.push_back(nullptr);
+
+        // Basically we are wrapping it in quotes
+        const std::wstring& actual_cmd_line = Strings::wformat(LR"###("%s")###", cmd_line);
+        auto exit_code = _wspawnlpe(_P_WAIT, L"cmd.exe", L"cmd.exe", L"/c", actual_cmd_line.c_str(), nullptr, env_cstr.data());
+        return static_cast<int>(exit_code);
+
+    }
+
     int cmd_execute(const wchar_t* cmd_line)
     {
         // Flush stdout before launching external process
         _flushall();
 
-        const wchar_t* env[] = {
-            LR"(ALLUSERSPROFILE=C:\ProgramData)",
-            LR"(APPDATA=C:\Users\roschuma\AppData\Roaming)",
-            LR"(ChocolateyPath=C:\Chocolatey)",
-            LR"(CommonProgramFiles=C:\Program Files\Common Files)",
-            LR"(CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files)",
-            LR"(CommonProgramW6432=C:\Program Files\Common Files)",
-            LR"(COMPUTERNAME=ROSCHUMA-005D)",
-            LR"(ComSpec=C:\WINDOWS\system32\cmd.exe)",
-            LR"(HOMEDRIVE=C:)",
-            LR"(HOMEPATH=\Users\roschuma)",
-            LR"(LOCALAPPDATA=C:\Users\roschuma\AppData\Local)",
-            LR"(LOGONSERVER=\\ROSCHUMA-005D)",
-            LR"(MSMPI_BIN=C:\Program Files\Microsoft MPI\Bin\)",
-            LR"(NUMBER_OF_PROCESSORS=8)",
-            LR"(OneDrive=C:\Users\roschuma\OneDrive)",
-            LR"(OS=Windows_NT)",
-            LR"(Path=C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\Users\roschuma\AppData\Local\Microsoft\WindowsApps;C:\Program Files\CMake\bin)",
-            LR"(PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL)",
-            LR"(PROCESSOR_ARCHITECTURE=AMD64)",
-            LR"(PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 60 Stepping 3, GenuineIntel)",
-            LR"(PROCESSOR_LEVEL=6)",
-            LR"(PROCESSOR_REVISION=3c03)",
-            LR"(ProgramData=C:\ProgramData)",
-            LR"(ProgramFiles=C:\Program Files)",
-            LR"(ProgramFiles(x86)=C:\Program Files (x86))",
-            LR"(ProgramW6432=C:\Program Files)",
-            LR"(PROMPT=$P$G)",
-            LR"(PSModulePath=C:\Users\roschuma\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules)",
-            LR"(PUBLIC=C:\Users\Public)",
-            LR"(SystemDrive=C:)",
-            LR"(SystemRoot=C:\WINDOWS)",
-            LR"(TEMP=C:\Users\roschuma\AppData\Local\Temp)",
-            LR"(TMP=C:\Users\roschuma\AppData\Local\Temp)",
-            LR"(USERDNSDOMAIN=redmond.corp.microsoft.com)",
-            LR"(USERDOMAIN=REDMOND)",
-            LR"(USERDOMAIN_ROAMINGPROFILE=REDMOND)",
-            LR"(USERNAME=roschuma)",
-            LR"(USERPROFILE=C:\Users\roschuma)",
-            LR"(VS140COMNTOOLS=C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\Tools\)",
-            LR"(windir=C:\WINDOWS)",
-            nullptr,
-        };
-
-
         // Basically we are wrapping it in quotes
         const std::wstring& actual_cmd_line = Strings::wformat(LR"###("%s")###", cmd_line);
-        //int exit_code = _wsystem(actual_cmd_line.c_str());
-        auto exit_code = _wspawnlpe(_P_WAIT, L"cmd.exe", L"cmd.exe", L"/c", actual_cmd_line.c_str(), nullptr, env);
+        int exit_code = _wsystem(actual_cmd_line.c_str());
         return exit_code;
     }
 
@@ -138,15 +164,15 @@ namespace vcpkg::System
 
     optional<std::wstring> get_environmental_variable(const wchar_t* varname) noexcept
     {
-        wchar_t* buffer;
-        _wdupenv_s(&buffer, nullptr, varname);
+        auto sz = GetEnvironmentVariableW(varname, nullptr, 0);
+        if (sz == 0) return nullptr;
 
-        if (buffer == nullptr)
-        {
-            return nullptr;
-        }
-        std::unique_ptr<wchar_t, void(__cdecl *)(void*)> bufptr(buffer, free);
-        return std::make_unique<std::wstring>(buffer);
+        auto ret = std::make_unique<std::wstring>(sz, L'\0');
+        Checks::check_exit(MAXDWORD >= ret->size());
+        auto sz2 = GetEnvironmentVariableW(varname, ret->data(), static_cast<DWORD>(ret->size()));
+        Checks::check_exit(sz2 + 1 == sz);
+        ret->pop_back();
+        return ret;
     }
 
     void set_environmental_variable(const wchar_t* varname, const wchar_t* varvalue) noexcept

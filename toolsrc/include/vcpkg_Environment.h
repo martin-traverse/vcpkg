@@ -1,5 +1,6 @@
 #pragma once
 #include "vcpkg_paths.h"
+#include "vcpkg_optional.h"
 
 namespace vcpkg::Environment
 {
@@ -14,6 +15,10 @@ namespace vcpkg::Environment
         ensure_cmake_on_path(paths);
         ensure_git_on_path(paths);
     }
+
+    optional<fs::path> get_nuget_path(const vcpkg_paths& paths);
+    optional<fs::path> get_git_path(const vcpkg_paths& paths);
+    optional<fs::path> get_cmake_path(const vcpkg_paths& paths);
 
     const fs::path& get_dumpbin_exe(const vcpkg_paths& paths);
 

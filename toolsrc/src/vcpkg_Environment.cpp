@@ -12,7 +12,7 @@ namespace vcpkg::Environment
     {
         static const std::regex re(R"###((\d+)\.(\d+)\.(\d+))###");
 
-        auto rc = System::cmd_execute_and_capture_output(Strings::wformat(LR"("%s" 2>&1)", version_cmd));
+        auto rc = System::cmd_execute_and_capture_output(Strings::wformat(LR"(%s 2>&1)", version_cmd));
         if (rc.exit_code != 0)
         {
             return false;
@@ -41,7 +41,7 @@ namespace vcpkg::Environment
     {
         auto it = std::find_if(candidate_paths.cbegin(), candidate_paths.cend(), [&expected_version, version_check_arguments](const fs::path& p)
                                {
-                                   const std::wstring cmd = Strings::wformat(L"%s %s", p.native(), version_check_arguments);
+                                   const std::wstring cmd = Strings::wformat(LR"("%s" %s)", p.native(), version_check_arguments);
                                    return exists_and_has_equal_or_greater_version(cmd, expected_version);
                                });
 
@@ -174,7 +174,7 @@ namespace vcpkg::Environment
 
         const std::vector<fs::path> candidate_paths = { downloaded_cmake_dir(paths) / "cmake.exe",
             Environment::get_ProgramFiles_platform_bitness() / "CMake" / "bin" / "cmake.exe",
-            Environment::get_ProgramFiles_32_bit() / "CMake" / "bin" };
+            Environment::get_ProgramFiles_32_bit() / "CMake/bin" };
 
         return find_if_has_equal_or_greater_version(candidate_paths, version_check_arguments, expected_version);
     }

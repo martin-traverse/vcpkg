@@ -12,7 +12,7 @@ namespace vcpkg::Environment
     {
         static const std::regex re(R"###((\d+)\.(\d+)\.(\d+))###");
 
-        auto rc = System::cmd_execute_and_capture_output(Strings::wformat(L"%s 2>&1", version_cmd));
+        auto rc = System::cmd_execute_and_capture_output(Strings::wformat(LR"("%s" 2>&1)", version_cmd));
         if (rc.exit_code != 0)
         {
             return false;

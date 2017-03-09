@@ -19,23 +19,16 @@ namespace vcpkg
     std::vector<StatusParagraph_and_associated_files> get_installed_files(const vcpkg_paths& paths, const StatusParagraphs& status_db);
 
 
-    class CMakeCommandBuilder
+    struct CMakeVariable
     {
-    public:
-        static CMakeCommandBuilder start(const fs::path& cmake_exe, const fs::path& cmake_script);
+        CMakeVariable(const std::wstring& varname, const wchar_t* varvalue);
+        CMakeVariable(const std::wstring& varname, const std::string& varvalue);
+        CMakeVariable(const std::wstring& varname, const std::wstring& varvalue);
+        CMakeVariable(const std::wstring& varname, const fs::path& path);
 
-        CMakeCommandBuilder add_variable(const std::wstring& varname, const std::string& varvalue);
-        CMakeCommandBuilder add_variable(const std::wstring& varname, const std::wstring& varvalue);
-        CMakeCommandBuilder add_path(const std::wstring& varname, const fs::path& path);
-
-        std::wstring build();
-
-    private:
-        CMakeCommandBuilder(const fs::path& cmake_exe, const fs::path& cmake_script);
-
-        fs::path cmake_exe;
-        fs::path cmake_script;
-        std::map<std::wstring, std::wstring> pass_variables;
+        std::wstring s;
     };
+
+    std::wstring make_cmake_cmd(const fs::path& cmake_exe, const fs::path& cmake_script, const std::vector<CMakeVariable>& pass_variables);
 
 } // namespace vcpkg

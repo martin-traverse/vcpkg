@@ -49,13 +49,15 @@ namespace vcpkg::Commands::Build
         const Environment::vcvarsall_and_platform_toolset vcvarsall_bat = Environment::get_vcvarsall_bat(paths);
         const std::wstring cmd_set_environment = Strings::wformat(LR"("%s" %s >nul 2>&1)", vcvarsall_bat.path.native(), Strings::utf8_to_utf16(target_triplet.architecture()));
 
-        const std::wstring cmd_launch_cmake = CMakeCommandBuilder::start(*cmake_exe_path, ports_cmake_script_path).add_variable(L"CMD", L"BUILD")
-                                                                                                                  .add_variable(L"PORT", source_paragraph.name)
-                                                                                                                  .add_path(L"CURRENT_PORT_DIR", port_dir / "/.")
-                                                                                                                  .add_variable(L"TARGET_TRIPLET", target_triplet.canonical_name())
-                                                                                                                  .add_variable(L"VCPKG_PLATFORM_TOOLSET", vcvarsall_bat.platform_toolset)
-                                                                                                                  .add_path(L"GIT", *git_exe_path)
-                                                                                                                  .build();
+        const std::wstring cmd_launch_cmake = make_cmake_cmd(*cmake_exe_path, ports_cmake_script_path,
+                                                             {
+                                                                 { L"CMD", L"BUILD" },
+                                                                 { L"PORT", source_paragraph.name },
+                                                                 { L"CURRENT_PORT_DIR", port_dir / "/." },
+                                                                 { L"TARGET_TRIPLET", target_triplet.canonical_name() },
+                                                                 { L"VCPKG_PLATFORM_TOOLSET", vcvarsall_bat.platform_toolset },
+                                                                 { L"GIT", *git_exe_path }
+                                                             });
 
         const std::wstring command = Strings::wformat(LR"(%s && %s)", cmd_set_environment, cmd_launch_cmake);
 

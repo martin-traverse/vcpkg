@@ -3,6 +3,7 @@
 #include "vcpkg_Files.h"
 #include "Paragraphs.h"
 #include "metrics.h"
+#include "vcpkg_Strings.h"
 
 namespace vcpkg
 {
@@ -201,42 +202,15 @@ namespace vcpkg
         return installed_files;
     }
 
-    CMakeCommandBuilder CMakeCommandBuilder::start(const fs::path& cmake_exe, const fs::path& cmake_script)
+    CMakeVariable::CMakeVariable(const std::wstring& varname, const wchar_t* varvalue) : s(Strings::wformat(LR"("-D%s=%s")", varname, varvalue)) { }
+    CMakeVariable::CMakeVariable(const std::wstring& varname, const std::string& varvalue) : CMakeVariable(varname, Strings::utf8_to_utf16(varvalue).c_str()) { }
+    CMakeVariable::CMakeVariable(const std::wstring& varname, const std::wstring& varvalue) : CMakeVariable(varname, varvalue.c_str()) {}
+    CMakeVariable::CMakeVariable(const std::wstring& varname, const fs::path& path) : CMakeVariable(varname, path.generic_wstring()) {}
+
+    std::wstring make_cmake_cmd(const fs::path& cmake_exe, const fs::path& cmake_script, const std::vector<CMakeVariable>& pass_variables)
     {
-        return CMakeCommandBuilder(cmake_exe, cmake_script);
-    }
-
-    CMakeCommandBuilder CMakeCommandBuilder::add_variable(const std::wstring& varname, const std::string& varvalue)
-    {
-        this->pass_variables.emplace(varname, Strings::utf8_to_utf16(varvalue));
-        return *this;
-    }
-
-    CMakeCommandBuilder CMakeCommandBuilder::add_variable(const std::wstring& varname, const std::wstring& varvalue)
-    {
-        this->pass_variables.emplace(varname, varvalue);
-        return *this;
-    }
-
-    CMakeCommandBuilder CMakeCommandBuilder::add_path(const std::wstring& varname, const fs::path& path)
-    {
-        this->pass_variables.emplace(varname, path.generic_wstring());
-        return *this;
-    }
-
-    std::wstring CMakeCommandBuilder::build()
-    {
-        std::wstring cmd_cmake_pass_variables;
-
-        for (auto variable : this->pass_variables)
-        {
-            const std::wstring v = Strings::wformat(LR"("-D%s=%s")", variable.first, variable.second);
-            cmd_cmake_pass_variables.append(v).append(L" ");
-        }
-        cmd_cmake_pass_variables.pop_back(); // Remove the last whitespace
-
+        std::wstring cmd_cmake_pass_variables = Strings::wjoin(L" ", pass_variables, [](auto&& v) {return v.s; });
         return Strings::wformat(LR"("%s" %s -P "%s")", cmake_exe.native(), cmd_cmake_pass_variables, cmake_script.generic_wstring());
     }
 
-    CMakeCommandBuilder::CMakeCommandBuilder(const fs::path& cmake_exe, const fs::path& cmake_script) : cmake_exe(cmake_exe), cmake_script(cmake_script) {}
 }

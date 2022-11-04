@@ -1,49 +1,21 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
-
-include(vcpkg_common_functions)
-find_program(GIT git)
-
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src)
-
-set(SHADERC_GIT_URL "https://github.com/google/shaderc.git")
-set(SHADERC_GIT_REF "2df47b51d83ad83cbc2e7f8ff2b56776293e8958")
-if(NOT EXISTS "${DOWNLOADS}/shaderc.git")
-    message(STATUS "Cloning")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} clone --bare ${SHADERC_GIT_URL} ${DOWNLOADS}/shaderc.git
-        WORKING_DIRECTORY ${DOWNLOADS}
-        LOGNAME clone
-    )
-endif()
-if(NOT EXISTS "${SOURCE_PATH}/.git")
-    message(STATUS "Adding worktree and patching")
-    file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR})
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} worktree add -f --detach ${SOURCE_PATH} ${SHADERC_GIT_REF}
-        WORKING_DIRECTORY ${DOWNLOADS}/shaderc.git
-        LOGNAME worktree
-    )
-    message(STATUS "Patching")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} apply ${CMAKE_CURRENT_LIST_DIR}/0001-Do-not-generate-build-version.inc.patch --ignore-whitespace --whitespace=fix
-        WORKING_DIRECTORY ${SOURCE_PATH}
-        LOGNAME patch
-    )
-endif()
-
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH}/third_party/glslang)
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists_spirv.txt DESTINATION ${SOURCE_PATH}/third_party/spirv-tools)
-file(RENAME ${SOURCE_PATH}/third_party/spirv-tools/CMakeLists_spirv.txt ${SOURCE_PATH}/third_party/spirv-tools/CMakeLists.txt)
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/build-version.inc DESTINATION ${SOURCE_PATH}/glslc/src)
-
 #Note: glslang and spir tools doesn't export symbol and need to be build as static lib for cmake to work
-set(VCPKG_LIBRARY_LINKAGE "static")
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO google/shaderc
+    REF adca18dcadd460eb517fe44f6cd2460fa0650ebe
+    SHA512 3a27d4c51be9e9396b9a854cb96d88e78ff2ca6dcb8400bd3288f6984d25876af0eae649aa1c72ad613edbbcfa4324a12809f13ceb7a0134eef41cb1a698dfdf
+    HEAD_REF master
+    PATCHES 
+        disable-update-version.patch
+        fix-build-type.patch
+        fix-install-shaderc_util.patch
+        fix-export-cmakefiles.patch
+)
+
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/build-version.inc" DESTINATION "${SOURCE_PATH}/glslc/src")
+
 set(OPTIONS)
 if(VCPKG_CRT_LINKAGE STREQUAL "dynamic")
     list(APPEND OPTIONS -DSHADERC_ENABLE_SHARED_CRT=ON)
@@ -52,28 +24,26 @@ endif()
 # shaderc uses python to manipulate copyright information
 vcpkg_find_acquire_program(PYTHON3)
 get_filename_component(PYTHON3_EXE_PATH ${PYTHON3} DIRECTORY)
-set(ENV{PATH} "${PYTHON3_EXE_PATH};$ENV{PATH}")
+vcpkg_add_to_path(PREPEND "${PYTHON3_EXE_PATH}")
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS -DSHADERC_SKIP_TESTS=true ${OPTIONS}
-    OPTIONS_DEBUG -DSUFFIX_D=true
-    OPTIONS_RELEASE -DSUFFIX_D=false
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        ${OPTIONS}
+        -DSHADERC_SKIP_TESTS=true 
+        -DSHADERC_GLSLANG_DIR=${CMAKE_CURRENT_LIST_DIR}/glslang
+        -DSHADERC_SPIRV_TOOLS_DIR=${CMAKE_CURRENT_LIST_DIR}/spirv-tools
+        -DSHADERC_ENABLE_EXAMPLES=OFF
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
 
-file(GLOB EXES "${CURRENT_PACKAGES_DIR}/bin/*.exe")
-file(COPY ${EXES} DESTINATION ${CURRENT_PACKAGES_DIR}/tools)
+vcpkg_fixup_pkgconfig()
+vcpkg_cmake_config_fixup(PACKAGE_NAME unofficial-shaderc CONFIG_PATH share/unofficial-shaderc)
+vcpkg_cmake_config_fixup(PACKAGE_NAME unofficial-shaderc_util CONFIG_PATH share/unofficial-shaderc_util)
 
-#Safe to remove as libs are static
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/bin)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug)
+vcpkg_copy_tools(TOOL_NAMES glslc AUTO_CLEAN)
 
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
-file(WRITE ${CURRENT_PACKAGES_DIR}/include/shaderc.txt)
-
-# Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/shaderc)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/shaderc/LICENSE ${CURRENT_PACKAGES_DIR}/share/shaderc/copyright)
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

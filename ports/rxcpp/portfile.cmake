@@ -1,23 +1,20 @@
-#header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/RxCpp-3.0.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/Reactive-Extensions/RxCpp/archive/v3.0.0.tar.gz"
-    FILENAME "RxCpp-v3.0.0.tar.gz"
-    SHA512 6d810b6163d0920d531f32a13729e290c81b47d5fc9c3e3d3d8a25d27a6f0671fec097d091bef7383b7e556e9e5471db087bb955e7f4fd9a5fdc9e7b06050844
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-file(INSTALL
-	${SOURCE_PATH}/Rx/v2/src/rxcpp
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO ReactiveX/RxCpp
+    REF v4.1.1
+    SHA512 387e1276151a19b62fd1d36b486ff5f3ed28f0f48ae8b00902bf13464d20603f492ecd63ab4444d04293fc3d92a8f7ce3e67a4c68836415c4655331fb6b54edb
+    HEAD_REF master
+    PATCHES
+        disable-tests.patch # from https://github.com/ReactiveX/RxCpp/pull/574
 )
 
-file(INSTALL
-	${SOURCE_PATH}/Ix/CPP/src/cpplinq
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
 )
 
-file(INSTALL
-	${SOURCE_PATH}/license.md
-	DESTINATION ${CURRENT_PACKAGES_DIR}/share/rxcpp RENAME copyright)
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH share/${PORT}/cmake/)
+
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug)
+file(COPY ${SOURCE_PATH}/license.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT})
+file(RENAME ${CURRENT_PACKAGES_DIR}/share/${PORT}/license.md ${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright)

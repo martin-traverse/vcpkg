@@ -1,20 +1,28 @@
 #header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/gli-0.8.2.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/g-truc/gli/archive/0.8.2.0.tar.gz"
-    FILENAME "0.8.2.0.tar.gz"
-    SHA512 c254a4e1497d0add985e4a882c552db99c512cc0e9cc72145d51a6e7deada817d624d9818099a47136a8a3ef1223a26a34e355e3c713166f0bb062e506059834
-)
-vcpkg_extract_source_archive(${ARCHIVE})
 
-# Remove glm/CMakeLists.txt
-file(REMOVE ${SOURCE_PATH}/glm/CMakeLists.txt)
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO g-truc/gli
+    REF 779b99ac6656e4d30c3b24e96e0136a59649a869
+    SHA512 6e7ab46b7943cb185c8c1f6e45b765f5463e03628973043a0e8b866458ccceb5249f69a2a77b5e69c73f3ace85af96c7b9b2137685ceb6d0fcb67e491a49be69
+    HEAD_REF master
+    PATCHES
+        disable-test.patch
+)
+
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+)
+
+vcpkg_install_cmake()
+
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/gli)
+
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/lib)
+file(REMOVE ${CURRENT_PACKAGES_DIR}/include/gli/CMakeLists.txt)
 
 # Put the license file where vcpkg expects it
-file(COPY ${SOURCE_PATH}/external/glm/copying.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/gli/)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/gli/copying.txt ${CURRENT_PACKAGES_DIR}/share/gli/copyright)
-
-# Copy the glm header files
-file(GLOB HEADER_FILES ${SOURCE_PATH}/gli/*)
-file(COPY ${HEADER_FILES} DESTINATION ${CURRENT_PACKAGES_DIR}/include/gli)
+# manual.md contains the "licenses" section for the project
+file(INSTALL ${SOURCE_PATH}/manual.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

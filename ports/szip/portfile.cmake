@@ -1,48 +1,80 @@
-include(vcpkg_common_functions)
-
-# set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/szip-2.1)
-# vcpkg_download_distfile(ARCHIVE
-#     URLS "https://support.hdfgroup.org/ftp/lib-external/szip/2.1/src/szip-2.1.tar.gz"
-#     FILENAME "szip-2.1.tar.gz"
-#     SHA512 ea91b877bb061fe6c96988a3c4b705e101a6950e34e9be53d6a57455c6a625be0afa60f4a3cfdd09649205b9f8586cc25ea60fe07a8131579acf3826b35fb749
-# )
-# vcpkg_extract_source_archive(${ARCHIVE})
-
-# NOTE: We use Szip from the HDF5 cmake package dir, because it includes a lot of fixes for the CMake build files
-
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/CMake-hdf5-1.10.0-patch1)
+set(SZIP_VERSION "2.1.1")
 vcpkg_download_distfile(ARCHIVE
-    URLS "http://hdf4.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.0-patch1/src/CMake-hdf5-1.10.0-patch1.zip"
-    FILENAME "CMake-hdf5-1.10.0-patch1.zip"
-    SHA512 ec2edb43438661323be5998ecf64c4dd537ddc7451e31f89390260d16883e60a1ccc1bf745bcb809af22f2bf7157d50331a33910b8ebf5c59cd50693dfb2ef8f
+    URLS "https://support.hdfgroup.org/ftp/lib-external/szip/${SZIP_VERSION}/src/szip-${SZIP_VERSION}.tar.gz"
+    FILENAME "szip-${SZIP_VERSION}.tar.gz"
+    SHA512 ada6406efb096cd8a2daf8f9217fe9111a96dcae87e29d1c31f58ddd2ad2aa7bac03f23c7205dc9360f3b62d259461759330c7189ef0c2fe559704b1ea9d40dd
 )
-vcpkg_extract_source_archive(${ARCHIVE})
-set(ARCHIVE ${SOURCE_PATH}/SZip.tar.gz)
-vcpkg_extract_source_archive(${ARCHIVE})
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/Szip)
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE "${ARCHIVE}"
+    REF "szip-${SZIP_VERSION}"
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/disable-static-lib-in-shared-build.patch
-        ${CMAKE_CURRENT_LIST_DIR}/default-component-shared.patch
+        fix-linkage-config.patch
+        mingw-lib-names.patch
 )
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
+if (VCPKG_TARGET_IS_IOS)
+    # when cross-compiling, try_run will not work.
+    # LFS "large file support" is keyed on 
+    # 1) 64-bit off_t (https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/64bitPorting/transition/transition.html table 2-1)
+    # 2) stat works properly, which is true
+    set(extra_opts 
+        -DTEST_LFS_WORKS_RUN=TRUE
+        -DTEST_LFS_WORKS_RUN__TRYRUN_OUTPUT=""
+    )
+endif()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DSZIP_INSTALL_DATA_DIR=share/szip/data
         -DSZIP_INSTALL_CMAKE_DIR=share/szip
+        ${extra_opts}
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup()
 
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/szip/data/COPYING ${CURRENT_PACKAGES_DIR}/share/szip/copyright)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/szip_adpt.h"
+        "\n#ifdef SZ_BUILT_AS_DYNAMIC_LIB"
+        "\n#if 1 // SZ_BUILT_AS_DYNAMIC_LIB")
+endif()
 
-file(READ ${CURRENT_PACKAGES_DIR}/debug/share/szip/szip-targets-debug.cmake SZIP_TARGETS_DEBUG_MODULE)
-string(REPLACE "\${_IMPORT_PREFIX}" "\${_IMPORT_PREFIX}/debug" SZIP_TARGETS_DEBUG_MODULE "${SZIP_TARGETS_DEBUG_MODULE}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/szip/szip-targets-debug.cmake "${SZIP_TARGETS_DEBUG_MODULE}")
+if(NOT VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_MINGW)
+    set(SZIP_LIB_RELEASE  "-lszip")
+    set(SZIP_LIB_DEBUG    "-lszip_debug")
+    set(SZIP_LIBS_PRIVATE "-lm")
+elseif(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    set(SZIP_LIB_RELEASE  "-llibszip")
+    set(SZIP_LIB_DEBUG    "-llibszip_D")
+    set(SZIP_LIBS_PRIVATE "")
+else()    
+    set(SZIP_LIB_RELEASE  "-lszip")
+    set(SZIP_LIB_DEBUG    "-lszip_D")
+    set(SZIP_LIBS_PRIVATE "")
+endif()
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+    set(SZIP_LINKAGE_FLAGS "-DSZ_BUILT_AS_DYNAMIC_LIB=1")
+else()
+    set(SZIP_LINKAGE_FLAGS "")
+endif()
+if(EXISTS "${CURRENT_PACKAGES_DIR}/lib")
+    set(SZIP_LIB "${SZIP_LIB_RELEASE}")
+    file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/szip.pc.in" "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/szip.pc" @ONLY)
+endif()
+if(EXISTS "${CURRENT_PACKAGES_DIR}/debug/lib")
+    set(SZIP_LIB "${SZIP_LIB_DEBUG}")
+    file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig")
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/szip.pc.in" "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/szip.pc" @ONLY)
+endif()
+vcpkg_fixup_pkgconfig()
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/szip/data")
+
+file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

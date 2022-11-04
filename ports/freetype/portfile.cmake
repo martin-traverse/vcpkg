@@ -1,48 +1,85 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/freetype-2.6.3)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://download.savannah.gnu.org/releases/freetype/freetype-2.6.3.tar.bz2"
-    FILENAME "freetype-2.6.3.tar.bz2"
-    SHA512 e1f9018835fc88beeb4479537b59f866c52393ae18d24a1e0710a464cf948ab02b35c2c6043bc20c1db3a04871ee4eb0bb1d210550c0ea2780c8b1aea98fbf0d
-)
-vcpkg_extract_source_archive(${ARCHIVE})
+set(FT_VERSION 2.12.1)
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
-    PATCHES ${CMAKE_CURRENT_LIST_DIR}/0001-Support-Windows-DLLs-via-CMAKE_WINDOWS_EXPORT_ALL_SY.patch
-            ${CMAKE_CURRENT_LIST_DIR}/0002-Add-CONFIG_INSTALL_PATH-option.patch
-            ${CMAKE_CURRENT_LIST_DIR}/0003-Fix-UWP.patch
+vcpkg_from_sourceforge(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO freetype/freetype2
+    REF ${FT_VERSION}
+    FILENAME freetype-${FT_VERSION}.tar.xz
+    SHA512 6482de1748dc2cc01e033d21a3b492dadb1f039d13d9179685fdcf985e24d7f587cbca4c27ed8a7fdb7d9ad59612642ac5f4db062443154753295363f45c052f
+    PATCHES
+        0003-Fix-UWP.patch
+        brotli-static.patch
+        bzip2.patch
+        fix-exports.patch
+        error-strings.patch
 )
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        zlib          FT_REQUIRE_ZLIB
+        bzip2         FT_REQUIRE_BZIP2
+        error-strings FT_ENABLE_ERROR_STRINGS
+        png           FT_REQUIRE_PNG
+        brotli        FT_REQUIRE_BROTLI
+    INVERTED_FEATURES
+        zlib          FT_DISABLE_ZLIB
+        bzip2         FT_DISABLE_BZIP2
+        png           FT_DISABLE_PNG
+        brotli        FT_DISABLE_BROTLI
+)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        -DCONFIG_INSTALL_PATH=share/freetype
-        -DWITH_ZLIB=ON
-        -DWITH_BZip2=ON
-        -DWITH_PNG=ON
-        -DWITH_HarfBuzz=OFF
+        -DFT_DISABLE_HARFBUZZ=ON
+        ${FEATURE_OPTIONS}
 )
 
-vcpkg_install_cmake()
-
-file(RENAME ${CURRENT_PACKAGES_DIR}/include/freetype2/freetype ${CURRENT_PACKAGES_DIR}/include/freetype)
-file(RENAME ${CURRENT_PACKAGES_DIR}/include/freetype2/ft2build.h ${CURRENT_PACKAGES_DIR}/include/ft2build.h)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/freetype2)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-
-file(READ ${CURRENT_PACKAGES_DIR}/debug/share/freetype/freetype-config-debug.cmake DEBUG_MODULE)
-string(REPLACE "\${_IMPORT_PREFIX}" "\${_IMPORT_PREFIX}/debug" DEBUG_MODULE "${DEBUG_MODULE}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/freetype/freetype-config-debug.cmake "${DEBUG_MODULE}")
-
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
-
-file(COPY
-    ${SOURCE_PATH}/docs/LICENSE.TXT
-    ${SOURCE_PATH}/docs/FTL.TXT
-    ${SOURCE_PATH}/docs/GPLv2.TXT
-    DESTINATION ${CURRENT_PACKAGES_DIR}/share/freetype
-)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/freetype/LICENSE.TXT ${CURRENT_PACKAGES_DIR}/share/freetype/copyright)
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/freetype)
 
+# Rename for easy usage (VS integration; CMake and autotools will not care)
+file(RENAME "${CURRENT_PACKAGES_DIR}/include/freetype2/freetype" "${CURRENT_PACKAGES_DIR}/include/freetype")
+file(RENAME "${CURRENT_PACKAGES_DIR}/include/freetype2/ft2build.h" "${CURRENT_PACKAGES_DIR}/include/ft2build.h")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/include/freetype2")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+# Fix the include dir [freetype2 -> freetype]
+file(READ "${CURRENT_PACKAGES_DIR}/share/freetype/freetype-targets.cmake" CONFIG_MODULE)
+string(REPLACE "\${_IMPORT_PREFIX}/include/freetype2" "\${_IMPORT_PREFIX}/include" CONFIG_MODULE "${CONFIG_MODULE}")
+string(REPLACE "\${_IMPORT_PREFIX}/lib/brotlicommon-static.lib" [[\$<\$<NOT:\$<CONFIG:DEBUG>>:${_IMPORT_PREFIX}/lib/brotlicommon-static.lib>;\$<\$<CONFIG:DEBUG>:${_IMPORT_PREFIX}/debug/lib/brotlicommon-static.lib>]] CONFIG_MODULE "${CONFIG_MODULE}")
+string(REPLACE "\${_IMPORT_PREFIX}/lib/brotlidec-static.lib" [[\$<\$<NOT:\$<CONFIG:DEBUG>>:${_IMPORT_PREFIX}/lib/brotlidec-static.lib>;\$<\$<CONFIG:DEBUG>:${_IMPORT_PREFIX}/debug/lib/brotlidec-static.lib>]] CONFIG_MODULE "${CONFIG_MODULE}")
+string(REPLACE "\${_IMPORT_PREFIX}/lib/brotlidec.lib" [[\$<\$<NOT:\$<CONFIG:DEBUG>>:${_IMPORT_PREFIX}/lib/brotlidec.lib>;\$<\$<CONFIG:DEBUG>:${_IMPORT_PREFIX}/debug/lib/brotlidec.lib>]] CONFIG_MODULE "${CONFIG_MODULE}")
+string(REPLACE "\${_IMPORT_PREFIX}/lib/brotlidec.lib" [[\$<\$<NOT:\$<CONFIG:DEBUG>>:${_IMPORT_PREFIX}/lib/brotlidec.lib>;\$<\$<CONFIG:DEBUG>:${_IMPORT_PREFIX}/debug/lib/brotlidec.lib>]] CONFIG_MODULE "${CONFIG_MODULE}")
+file(WRITE ${CURRENT_PACKAGES_DIR}/share/freetype/freetype-targets.cmake "${CONFIG_MODULE}")
+
+find_library(FREETYPE_DEBUG NAMES freetyped PATHS "${CURRENT_PACKAGES_DIR}/debug/lib/" NO_DEFAULT_PATH)
+if(NOT VCPKG_BUILD_TYPE)
+    file(READ "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/freetype2.pc" _contents)
+    if(FREETYPE_DEBUG)
+        string(REPLACE "-lfreetype" "-lfreetyped" _contents "${_contents}")
+    endif()
+    string(REPLACE "-I\${includedir}/freetype2" "-I\${includedir}" _contents "${_contents}")
+    file(WRITE "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/freetype2.pc" "${_contents}")
+endif()
+
+file(READ "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/freetype2.pc" _contents)
+string(REPLACE "-I\${includedir}/freetype2" "-I\${includedir}" _contents "${_contents}")
+file(WRITE "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/freetype2.pc" "${_contents}")
+
+
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+
+configure_file("${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake"
+    "${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-cmake-wrapper.cmake" @ONLY)
+
+vcpkg_install_copyright(
+    FILE_LIST
+        "${SOURCE_PATH}/LICENSE.TXT"
+        "${SOURCE_PATH}/docs/FTL.TXT"
+        "${SOURCE_PATH}/docs/GPLv2.TXT"
+)

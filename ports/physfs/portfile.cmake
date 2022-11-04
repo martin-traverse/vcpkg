@@ -1,33 +1,32 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO icculus/physfs
+    REF eb3383b532c5f74bfeb42ec306ba2cf80eed988c # release-3.2.0
+    SHA512 4231b379107a8dbacad18d98c0800bad4a3aae1bdd1db0bd4cf0c89c69bb7590ed14422c77671c28bd7556f606d3ff155ad8432940ce6222340f647f9e73ae8e
+)
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    message(STATUS "Warning: Static building not supported yet. Building dynamic.")
-    set(VCPKG_LIBRARY_LINKAGE dynamic)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" PHYSFS_STATIC)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" PHYSFS_SHARED)
+
+if(VCPKG_TARGET_IS_UWP)
+    set(configure_opts WINDOWS_USE_MSBUILD)
 endif()
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/physfs-2.0.3)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://icculus.org/physfs/downloads/physfs-2.0.3.tar.bz2"
-    FILENAME "physfs-2.0.3.tar.bz2"
-    SHA512 47eff0c81b8dc3bb526766b0a8ad2437d2951867880116d6e6e8f2ec1490e263541fb741867fed6517cc3fa8a9c5651b36e3e02a499f19cfdc5c7261c9707e80
-)
-vcpkg_extract_source_archive(${ARCHIVE})
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    ${configure_opts}
+    OPTIONS
+        -DPHYSFS_BUILD_STATIC=${PHYSFS_STATIC}
+        -DPHYSFS_BUILD_SHARED=${PHYSFS_SHARED}
+        -DPHYSFS_BUILD_TEST=OFF
 )
 
-vcpkg_install_cmake()
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin/test_physfs.exe)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/bin/test_physfs.exe)
+vcpkg_cmake_install()
+vcpkg_copy_pdbs()
 
-# Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/physfs)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/physfs/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/physfs/copyright)
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/PhysFS)
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

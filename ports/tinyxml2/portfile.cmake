@@ -1,22 +1,24 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/tinyxml2-3.0.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/leethomason/tinyxml2/archive/3.0.0.zip"
-    FILENAME "tinyxml2-3.0.0.zip"
-    SHA512 3581e086e41ea01418fdf74e53b932c41cada9a45b73fb71c15424672182dc2a1e55110f030962ae44df6f5d9f060478c5b04373f886da843a78fcabae8b063c
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    # OPTIONS -DUSE_THIS_IN_ALL_BUILDS=1
-    # OPTIONS_RELEASE -DOPTIMIZE=1
-    # OPTIONS_DEBUG -DDEBUGGABLE=1
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO leethomason/tinyxml2
+    REF 9.0.0
+    SHA512 9C5CE8131984690DF302CA3E32314573B137180ED522C92FD631692979C942372A28F697FDB3D5E56BCF2D3DC596262B724D088153F3E1D721C9536F2A883367
+    HEAD_REF master
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -Dtinyxml2_BUILD_TESTING=OFF
+)
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(COPY ${SOURCE_PATH}/readme.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/tinyxml2)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/tinyxml2/readme.md ${CURRENT_PACKAGES_DIR}/share/tinyxml2/copyright)
+vcpkg_cmake_install()
+
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/tinyxml2)
+vcpkg_fixup_pkgconfig()
+
 vcpkg_copy_pdbs()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

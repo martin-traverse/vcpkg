@@ -1,91 +1,73 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/glew-2.0.0)
-vcpkg_download_distfile(ARCHIVE_FILE
-    URLS "https://sourceforge.net/projects/glew/files/glew/2.0.0/glew-2.0.0.tgz"
-    FILENAME "glew-2.0.0.tgz"
-    SHA512 e9bcd5f19a4495ce6511dfd76e64b4e4d958603c513ee9063eb9fe24fc6e0413f168620661230f1baef558f2f907cef7fe7ab2bdf957a6f7bda5fe96e9319c6a
-)
-vcpkg_extract_source_archive(${ARCHIVE_FILE})
-
-IF (TRIPLET_SYSTEM_ARCH MATCHES "x86")
-	SET(BUILD_ARCH "Win32")
-ELSEIF(TRIPLET_SYSTEM_ARCH MATCHES "arm")
-	MESSAGE(FATAL_ERROR " ARM is currently not supported.")
-ELSE()
-	SET(BUILD_ARCH ${TRIPLET_SYSTEM_ARCH})
-ENDIF()
-
-# TODO: Maybe switch to glews' cmake build system in the future
-FOREACH(LINKAGE shared static)
-	if(NOT EXISTS ${SOURCE_PATH}/build/vc12/glew_${LINKAGE}14.vcxproj)
-		message(STATUS "Upgrading " ${LINKAGE} " project")
-		file(READ ${SOURCE_PATH}/build/vc12/glew_${LINKAGE}.vcxproj PROJ)
-		string(REPLACE
-			"<PlatformToolset>v120</PlatformToolset>"
-			"<PlatformToolset>v140</PlatformToolset>"
-			PROJ ${PROJ})
-		string(REPLACE
-			"opengl32.lib%"
-			"opengl32.lib\;%"
-			PROJ ${PROJ})
-			
-		if (LINKAGE STREQUAL "static")
-			string(REPLACE
-				"MultiThreadedDebugDLL"
-				"MultiThreadedDebug"
-				PROJ ${PROJ}
-			)
-		endif()
-		file(WRITE ${SOURCE_PATH}/build/vc12/glew_${LINKAGE}14.vcxproj ${PROJ})
-	endif()
-ENDFOREACH(LINKAGE)
-message(STATUS "Upgrading projects done")
-
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-	vcpkg_build_msbuild(
-		PROJECT_PATH ${SOURCE_PATH}/build/vc12/glew_static14.vcxproj
-	)
-else()
-	vcpkg_build_msbuild(
-		PROJECT_PATH ${SOURCE_PATH}/build/vc12/glew_shared14.vcxproj
-	)
+if(VCPKG_TARGET_IS_LINUX)
+    message(WARNING "${PORT} requires the following libraries from the system package manager:\n    libxmu-dev\n    libxi-dev\n    libgl-dev\n\nThese can be installed on Ubuntu systems via apt-get install libxmu-dev libxi-dev libgl-dev.")
 endif()
 
+# Don't change to vcpkg_from_github! The sources in the git repository (archives) are missing some files that are distributed inside releases.
+# More info: https://github.com/nigels-com/glew/issues/31 and https://github.com/nigels-com/glew/issues/13
+vcpkg_download_distfile(ARCHIVE
+    URLS "https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.tgz"
+    FILENAME "glew-2.2.0.tgz"
+    SHA512 57453646635609d54f62fb32a080b82b601fd471fcfd26e109f479b3fef6dfbc24b83f4ba62916d07d62cd06d1409ad7aa19bc1cd7cf3639c103c815b8be31d1
+)
 
-message(STATUS "Installing")
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
+    REF glew
+    PATCHES
+        fix-LNK2019.patch
+)
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-	file(INSTALL
-		${SOURCE_PATH}/bin/Debug/${BUILD_ARCH}/glew32d.dll
-		DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin
-	)
-	file(INSTALL
-		${SOURCE_PATH}/bin/Release/${BUILD_ARCH}/glew32.dll
-		DESTINATION ${CURRENT_PACKAGES_DIR}/bin
-	)
-	file(INSTALL
-		${SOURCE_PATH}/lib/Debug/${BUILD_ARCH}/glew32d.lib
-		DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib RENAME glew32.lib
-	)
-	file(INSTALL
-		${SOURCE_PATH}/lib/Release/${BUILD_ARCH}/glew32.lib
-		DESTINATION ${CURRENT_PACKAGES_DIR}/lib
-	)
-else()
-	file(INSTALL
-		${SOURCE_PATH}/lib/Debug/${BUILD_ARCH}/glew32sd.lib
-		DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib RENAME glew32.lib
-	)
-	file(INSTALL
-		${SOURCE_PATH}/lib/Release/${BUILD_ARCH}/glew32s.lib
-		DESTINATION ${CURRENT_PACKAGES_DIR}/lib RENAME glew32.lib
-	)
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}/build/cmake"
+    DISABLE_PARALLEL_CONFIGURE
+    OPTIONS
+        -DBUILD_UTILS=OFF
+)
+
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/glew)
+# Skip check the required dependency opengl
+vcpkg_fixup_pkgconfig(SKIP_CHECK)
+
+if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+set(_targets_cmake_files)
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+    list(APPEND _targets_cmake_files "${CURRENT_PACKAGES_DIR}/share/glew/glew-targets-debug.cmake")
+endif()
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+    list(APPEND _targets_cmake_files "${CURRENT_PACKAGES_DIR}/share/glew/glew-targets-release.cmake")
 endif()
 
-file(INSTALL
-    ${SOURCE_PATH}/include/GL
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include
-)
-file(INSTALL ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/glew RENAME copyright)
+foreach(FILE ${_targets_cmake_files})
+    file(READ ${FILE} _contents)
+    string(REPLACE "libglew32" "glew32" _contents "${_contents}")
+    file(WRITE ${FILE} "${_contents}")
+endforeach()
+
+if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/libglew32.lib")
+    file(RENAME "${CURRENT_PACKAGES_DIR}/lib/libglew32.lib" "${CURRENT_PACKAGES_DIR}/lib/glew32.lib")
+endif()
+if(EXISTS "${CURRENT_PACKAGES_DIR}/debug/lib/libglew32d.lib")
+    file(RENAME "${CURRENT_PACKAGES_DIR}/debug/lib/libglew32d.lib" "${CURRENT_PACKAGES_DIR}/debug/lib/glew32d.lib")
+endif()
+endif()
+
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin")
+    foreach(FILE "${CURRENT_PACKAGES_DIR}/include/GL/glew.h" "${CURRENT_PACKAGES_DIR}/include/GL/wglew.h" "${CURRENT_PACKAGES_DIR}/include/GL/glxew.h")
+        file(READ ${FILE} _contents)
+        string(REPLACE "#ifdef GLEW_STATIC" "#if 1" _contents "${_contents}")
+        file(WRITE ${FILE} "${_contents}")
+    endforeach()
+endif()
+
 vcpkg_copy_pdbs()
-message(STATUS "Installing done")
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

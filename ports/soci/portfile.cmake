@@ -1,53 +1,61 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/soci-6eb1a3e9775ab7cdbf0f7f5aa5891792313cd8d9)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/SOCI/soci/archive/6eb1a3e9775ab7cdbf0f7f5aa5891792313cd8d9.zip"
-    FILENAME "soci-master-2016.10.22.zip"
-    SHA512 6bb0f7d3442de627089760485d3e663f12873b4871c4b4b4dfac5d380bad014865ac8382f7356e02514e9140f187dea8dcf8d6c25ac9c3e827e9fa69e9ed13b5
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO SOCI/soci
+    REF 99e2d567161a302de4f99832af76e6d3b75b68e6 #version 4.0.2
+    SHA512 d08d2383808d46d5e9550e9c7d93fb405d9e336eb38d974ba429e5b9446d3af53d4e702b90e80c67e298333da0145457fa1146d9773322676030be69de4ec4f4
+    HEAD_REF master
+    PATCHES
+        fix-dependency-libmysql.patch
+        export-include-dirs.patch
+        fix-mysql-feature-error.patch # https://bugs.mysql.com/bug.php?id=85131
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    set(SOCI_STATIC OFF)
-    set(SOCI_DYNAMIC ON)
-elseif(VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    set(SOCI_STATIC ON)
-    set(SOCI_DYNAMIC OFF)
-endif()
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" SOCI_DYNAMIC)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" SOCI_STATIC)
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
+# Handle features
+set(_COMPONENT_FLAGS "")
+foreach(_feature IN LISTS ALL_FEATURES)
+    # Uppercase the feature name and replace "-" with "_"
+    string(TOUPPER "${_feature}" _FEATURE)
+    string(REPLACE "-" "_" _FEATURE "${_FEATURE}")
+
+    # Turn "-DWITH_*=" ON or OFF depending on whether the feature
+    # is in the list.
+    if(_feature IN_LIST FEATURES)
+        list(APPEND _COMPONENT_FLAGS "-DWITH_${_FEATURE}=ON")
+    else()
+        list(APPEND _COMPONENT_FLAGS "-DWITH_${_FEATURE}=OFF")
+    endif()
+
+    if(_feature MATCHES "mysql")
+        set(MYSQL_OPT -DMYSQL_INCLUDE_DIR=${CURRENT_INSTALLED_DIR}/include/mysql)
+    endif()
+endforeach()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DSOCI_TESTS=OFF
-        -DSOCI_CXX_C11=ON
-        -DSOCI_LIBDIR=lib # This is to always have output in the lib folder and not lib64 for 64-bit builds
+        -DSOCI_CXX11=ON
         -DSOCI_STATIC=${SOCI_STATIC}
         -DSOCI_SHARED=${SOCI_DYNAMIC}
+        ${_COMPONENT_FLAGS}
+        ${MYSQL_OPT}
 )
 
-vcpkg_install_cmake()
-
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/share/soci)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(RENAME ${CURRENT_PACKAGES_DIR}/cmake/SOCI.cmake ${CURRENT_PACKAGES_DIR}/share/soci/SOCIConfig.cmake)
-file(RENAME ${CURRENT_PACKAGES_DIR}/cmake/SOCI-release.cmake ${CURRENT_PACKAGES_DIR}/share/soci/SOCI-release.cmake)
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/cmake/SOCI-debug.cmake ${CURRENT_PACKAGES_DIR}/share/soci/SOCI-debug.cmake)
-file(READ ${CURRENT_PACKAGES_DIR}/share/soci/SOCIConfig.cmake CONFIG_FILE)
-set(pattern "get_filename_component(_IMPORT_PREFIX \"\${_IMPORT_PREFIX}\" PATH)\n")
-string(REPLACE "${pattern}" "${pattern}${pattern}" CONFIG_FILE ${CONFIG_FILE})
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/soci/SOCIConfig.cmake ${CONFIG_FILE})
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/cmake)
-# Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE_1_0.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/soci)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/soci/LICENSE_1_0.txt ${CURRENT_PACKAGES_DIR}/share/soci/copyright)
-
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/SOCI)
+
+if ("mysql" IN_LIST FEATURES)
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/${PORT}/SOCIConfig.cmake"
+        "# Create imported target SOCI::soci_mysql"
+        "\ninclude(CMakeFindDependencyMacro)\nfind_dependency(libmysql)\n# Create imported target SOCI::soci_mysql"
+    )
+endif()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+# Handle copyright
+file(INSTALL "${SOURCE_PATH}/LICENSE_1_0.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

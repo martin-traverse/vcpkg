@@ -1,53 +1,95 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/netcdf-c-4.4.1.1)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/Unidata/netcdf-c/archive/v4.4.1.1.zip"
-    FILENAME "netcdf-c-v4.4.1.1.zip"
-    SHA512 8d31e47f0bd4d5c8640d3444c5c83425862ed1e8283aa78419e86b18d33fd93bfeb0067e8e9630457cb9c334d6fedf630283b5227a15137a3e153d57b22364a8
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO Unidata/netcdf-c
+    REF cd6173f472b778fa0e558982c59f7183aa5b8e47 # v4.8.1
+    SHA512 e965b9c865f31abcd0ae045cb709a41710e72bcf5bd237972cd62688f0f099f1b12be316a448d22315b1c73eb99fae3ea38072e9a3646a4f70ba42507d82f537
+    HEAD_REF master
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/no-install-deps.patch
-        ${CMAKE_CURRENT_LIST_DIR}/config-pkg-location.patch
-        ${CMAKE_CURRENT_LIST_DIR}/transitive-hdf5.patch
+        no-install-deps.patch
+        fix-dependency-zlib.patch
+        use_targets.patch
+        fix-dependency-libmath.patch
+        fix-linkage-error.patch
+        fix-pkgconfig.patch
+        fix-manpage-msys.patch
+        fix-dependency-libzip.patch
+        fix-dependency-mpi.patch
 )
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    PREFER_NINJA # Disable this option if project cannot be built with Ninja
+#Remove outdated find modules
+file(REMOVE "${SOURCE_PATH}/cmake/modules/FindSZIP.cmake")
+file(REMOVE "${SOURCE_PATH}/cmake/modules/FindZLIB.cmake")
+file(REMOVE "${SOURCE_PATH}/cmake/modules/windows/FindHDF5.cmake")
+
+if(NOT VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_MINGW)
+    set(CRT_OPTION "")
+elseif(VCPKG_CRT_LINKAGE STREQUAL "static")
+    set(CRT_OPTION -DNC_USE_STATIC_CRT=ON)
+else()
+    set(CRT_OPTION -DNC_USE_STATIC_CRT=OFF)
+endif()
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        dap       ENABLE_DAP
+        netcdf-4  ENABLE_NETCDF_4
+        hdf5      ENABLE_HDF5
+        nczarr    ENABLE_NCZARR
+        nczarr-zip    ENABLE_NCZARR_ZIP
+        tools     BUILD_UTILITIES
+    )
+
+if(NOT ENABLE_DAP AND NOT ENABLE_NCZARR)
+    list(APPEND FEATURE_OPTIONS "-DCMAKE_DISABLE_FIND_PACKAGE_CURL=ON")
+endif()
+
+if(ENABLE_HDF5)
+    # Fix hdf5 szip support detection for static linkage.
+    x_vcpkg_pkgconfig_get_modules(
+        PREFIX HDF5
+        MODULES hdf5
+        LIBRARIES
+    )
+    if(HDF5_LIBRARIES_RELEASE MATCHES "szip")
+        list(APPEND FEATURE_OPTIONS "-DUSE_SZIP=ON")
+    endif()
+endif()
+
+if(VCPKG_TARGET_IS_UWP)
+    string(APPEND VCPKG_C_FLAGS " /wd4996 /wd4703")
+    string(APPEND VCPKG_CXX_FLAGS " /wd4996 /wd4703")
+endif()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    DISABLE_PARALLEL_CONFIGURE # netcdf-c configures in the source!
     OPTIONS
-        -DBUILD_UTILITIES=OFF
         -DBUILD_TESTING=OFF
         -DENABLE_EXAMPLES=OFF
         -DENABLE_TESTS=OFF
-        -DUSE_HDF5=ON
+        -DENABLE_FILTER_TESTING=OFF
         -DENABLE_DAP_REMOTE_TESTS=OFF
         -DDISABLE_INSTALL_DEPENDENCIES=ON
-        -DConfigPackageLocation=share/netcdf
-
-    # OPTIONS_RELEASE -DOPTIMIZE=1
-    # OPTIONS_DEBUG -DDEBUGGABLE=1
+        ${CRT_OPTION}
+        ${FEATURE_OPTIONS}
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(PACKAGE_NAME "netcdf" CONFIG_PATH "lib/cmake/netCDF")
+vcpkg_fixup_pkgconfig()
 
-file(READ ${CURRENT_PACKAGES_DIR}/debug/share/netcdf/netCDFTargets-debug.cmake NETCDF_TARGETS_DEBUG_MODULE)
-string(REPLACE "\${_IMPORT_PREFIX}" "\${_IMPORT_PREFIX}/debug" NETCDF_TARGETS_DEBUG_MODULE "${NETCDF_TARGETS_DEBUG_MODULE}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/netcdf/netCDFTargets-debug.cmake "${NETCDF_TARGETS_DEBUG_MODULE}")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin/nc-config" "${CURRENT_PACKAGES_DIR}/bin/nc-config") # invalid
+if("tools" IN_LIST FEATURES)
+    vcpkg_copy_tools(
+        TOOL_NAMES  nccopy ncdump ncgen ncgen3
+        AUTO_CLEAN
+    )
+elseif(VCPKG_LIBRARY_LINKAGE STREQUAL "static" OR NOT VCPKG_TARGET_IS_WINDOWS)
+    # delete bin under non-windows because the dynamic libraries get put in lib
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin" "${CURRENT_PACKAGES_DIR}/bin")
+endif()
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
 
-# Handle copyright
-file(COPY ${SOURCE_PATH}/COPYRIGHT DESTINATION ${CURRENT_PACKAGES_DIR}/share/netcdf-c)
+file(INSTALL "${SOURCE_PATH}/COPYRIGHT" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

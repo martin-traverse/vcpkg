@@ -1,29 +1,29 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=jxrlib&changeSetId=e922fa50cdf9a58f40cad07553bcaa2883d3c5bf"
-    FILENAME "jxrlib_1_1.zip"
-    SHA512 6e8b579108444e9bea8d01f57e2ac3b63963c084adb8e265cfd82bb1199b8bd168b8aa41319cf34b87e97db1d72d0f3cc2d3dac881fcd1a6f398fe808d55772d
-)
-vcpkg_extract_source_archive(${ARCHIVE})
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
-
-# The file guiddef.h is part of the Windows SDK,
-# we then remove the local copy shipped with jxrlib
-file(REMOVE ${SOURCE_PATH}/common/include/guiddef.h)
-
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=ON
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO 4creators/jxrlib
+    REF f7521879862b9085318e814c6157490dd9dbbdb4
+    SHA512 f5617cbe73b6b905cc6bba181e6a3efedd59584f7a8c90e0f34db580cfdad4239a2ab753df4e221f26a5c0db51475b021052e3b9e3ab3673573573b1d57f3fdb
+    HEAD_REF master
+    PATCHES
+        guiddef.patch
+        fix-mingw.patch
 )
 
-vcpkg_install_cmake()
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+)
 
-# Handle copyright
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/jxrlib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/jxrlib/LICENSE ${CURRENT_PACKAGES_DIR}/share/jxrlib/copyright)
-
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/FindJXR.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/jxr")
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/jxr")
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/jxr")
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

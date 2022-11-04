@@ -1,77 +1,26 @@
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-# Get output directory
-set(PROJECT_ARCH_BITS "x64")
-if(TRIPLET_SYSTEM_ARCH MATCHES "x86")
-    set(PROJECT_ARCH_BITS "x32")
-elseif(TRIPLET_SYSTEM_ARCH MATCHES "arm")
-    message(FATAL_ERROR "ARM not supported")
-endif(TRIPLET_SYSTEM_ARCH MATCHES "x86")
-
-include(vcpkg_common_functions)
-find_program(GIT git)
-
-set(GIT_URL "https://github.com/erincatto/Box2D.git")
-set(GIT_REF "374664b")
-
-if(NOT EXISTS "${DOWNLOADS}/box2d.git")
-    message(STATUS "Cloning")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} clone --bare ${GIT_URL} ${DOWNLOADS}/box2d.git
-        WORKING_DIRECTORY ${DOWNLOADS}
-        LOGNAME clone
-    )
-endif(NOT EXISTS "${DOWNLOADS}/box2d.git")
-message(STATUS "Cloning done")
-
-if(NOT EXISTS "${CURRENT_BUILDTREES_DIR}/src/.git")
-    message(STATUS "Adding worktree")
-    file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR})
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} worktree add -f --detach ${CURRENT_BUILDTREES_DIR}/src ${GIT_REF}
-        WORKING_DIRECTORY ${DOWNLOADS}/box2d.git
-        LOGNAME worktree
-    )
-endif(NOT EXISTS "${CURRENT_BUILDTREES_DIR}/src/.git")
-message(STATUS "Adding worktree done")
-
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/)
-
-# Put the licence and readme files where vcpkg expects it
-message(STATUS "Packaging license")
-file(COPY ${SOURCE_PATH}/README.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/box2d)
-file(COPY ${SOURCE_PATH}/Box2D/License.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/box2d)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/box2d/License.txt ${CURRENT_PACKAGES_DIR}/share/box2d/copyright)
-message(STATUS "Packaging license done")
-
-# Building:
-set(OUTPUTS_PATH "${SOURCE_PATH}/Box2D/Build/vs2015/bin/${PROJECT_ARCH_BITS}")
-
-vcpkg_build_msbuild(PROJECT_PATH ${SOURCE_PATH}/Box2D/Build/vs2015/Box2D.vcxproj)
-
-message(STATUS "Packaging ${TARGET_TRIPLET}-Release lib")
-file(
-    INSTALL ${OUTPUTS_PATH}/Release/
-    DESTINATION ${CURRENT_PACKAGES_DIR}/lib
-    FILES_MATCHING PATTERN "*.lib"
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO erincatto/Box2D
+    REF 9ebbbcd960ad424e03e5de6e66a40764c16f51bc  #v2.4.1
+    SHA512 d9fa387ce893ed1fb73f80006491202f2624ef6d0fb37daf92fbd1a7f9071c84da45e4b418b333566435bbbdfd3d5f68a42dfca02416e9a3a2b4db039f1c6151
+    HEAD_REF master
 )
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/Box2D.lib ${CURRENT_PACKAGES_DIR}/lib/box2d.lib)
-message(STATUS "Packaging ${TARGET_TRIPLET}-Release lib done")
 
-message(STATUS "Packaging ${TARGET_TRIPLET}-Debug lib")
-file(
-    INSTALL ${OUTPUTS_PATH}/Debug/
-    DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib
-    FILES_MATCHING PATTERN "*.lib"
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DBOX2D_BUILD_UNIT_TESTS=OFF
+        -DBOX2D_BUILD_TESTBED=OFF
 )
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/Box2D.lib ${CURRENT_PACKAGES_DIR}/debug/lib/box2d.lib)
-message(STATUS "Packaging ${TARGET_TRIPLET}-Debug lib done")
+vcpkg_install_cmake()
 
-message(STATUS "Packaging headers")
-file(
-    COPY ${SOURCE_PATH}/Box2D/Box2D
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include
-    PATTERN "*.h"
-)
-message(STATUS "Packaging headers done")
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/box2d)
 
 vcpkg_copy_pdbs()
+
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

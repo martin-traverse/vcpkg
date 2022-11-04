@@ -1,143 +1,160 @@
-if (TRIPLET_SYSTEM_ARCH MATCHES "arm")
-    message(FATAL_ERROR " ARM is currently not supported.")
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO OSGeo/gdal
+    REF v3.5.2
+    SHA512 fece50709090e21200298cf0d5c0dd10418bb800a3c92fb77eedab42c3942169bf69abcad9a6d61d3368ac5265e053e8c2aeb361d297ed0ace92ffba3b21dbca
+    HEAD_REF master
+    PATCHES
+        find-link-libraries.patch
+        fix-gdal-target-interfaces.patch
+)
+# `vcpkg clean` stumbles over one subdir
+file(REMOVE_RECURSE "${SOURCE_PATH}/autotest")
+
+# Cf. cmake/helpers/CheckDependentLibraries.cmake
+# The default for all `GDAL_USE_<PKG>` dependencies is `OFF`.
+# Here, we explicitly control dependencies provided via vpcpkg.
+# "core" is used for a dependency which must be enabled to avoid vendored lib.
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        cfitsio          GDAL_USE_CFITSIO
+        curl             GDAL_USE_CURL
+        recommended-features GDAL_USE_EXPAT
+        freexl           GDAL_USE_FREEXL
+        geos             GDAL_USE_GEOS
+        core             GDAL_USE_GEOTIFF
+        default-features GDAL_USE_GIF
+        hdf5             GDAL_USE_HDF5
+        default-features GDAL_USE_ICONV
+        default-features GDAL_USE_JPEG
+        core             GDAL_USE_JSONC
+        lerc             GDAL_USE_LERC
+        libkml           GDAL_USE_LIBKML  # TODO, needs policy patches to FindLibKML.cmake
+        default-features GDAL_USE_LIBLZMA
+        default-features GDAL_USE_LIBXML2
+        mysql-libmariadb GDAL_USE_MYSQL 
+        netcdf           GDAL_USE_NETCDF
+        odbc             GDAL_USE_ODBC
+        default-features GDAL_USE_OPENJPEG
+        default-features GDAL_USE_OPENSSL
+        default-features GDAL_USE_PCRE2
+        default-features GDAL_USE_PNG
+        poppler          GDAL_USE_POPPLER
+        postgresql       GDAL_USE_POSTGRESQL
+        default-features GDAL_USE_QHULL
+        #core             GDAL_USE_SHAPELIB  # https://github.com/OSGeo/gdal/issues/5711, https://github.com/microsoft/vcpkg/issues/16041
+        core             GDAL_USE_SHAPELIB_INTERNAL
+        libspatialite    GDAL_USE_SPATIALITE
+        recommended-features GDAL_USE_SQLITE3
+        core             GDAL_USE_TIFF
+        default-features GDAL_USE_WEBP
+        core             GDAL_USE_ZLIB
+        default-features GDAL_USE_ZSTD
+        tools            BUILD_APPS
+)
+if(GDAL_USE_ICONV AND VCPKG_TARGET_IS_WINDOWS)
+    list(APPEND FEATURE_OPTIONS -D_ICONV_SECOND_ARGUMENT_IS_NOT_CONST=ON)
 endif()
 
-include(vcpkg_common_functions)
-
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://download.osgeo.org/gdal/1.11.3/gdal1113.zip"
-    FILENAME "gdal1113.zip"
-    SHA512 42feb98a54019d3b6ac54f598f299a57e117db500c662d39faa9d5f5090f03c1b8d7680242e1abd8035738edc4fc3197ae118a0ce50733691a76a5cf377bcd46
-)
-
-# Extract source into archictecture specific directory, because GDALs' nmake based build currently does not
-# support out of source builds.
-set(SOURCE_PATH_DEBUG   ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET}-debug/gdal-1.11.3)
-set(SOURCE_PATH_RELEASE ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET}-release/gdal-1.11.3)
-
-foreach(BUILD_TYPE debug release)
-    vcpkg_extract_source_archive(${ARCHIVE} ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET}-${BUILD_TYPE})
-    vcpkg_apply_patches(
-        SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET}-${BUILD_TYPE}/gdal-1.11.3
-        PATCHES 
-        ${CMAKE_CURRENT_LIST_DIR}/0001-Add-support-for-MSVC1900-backported-from-GDAL2.patch
-        ${CMAKE_CURRENT_LIST_DIR}/0002-Add-variable-CXX_CRT_FLAGS-to-allow-for-selection-of.patch
-        ${CMAKE_CURRENT_LIST_DIR}/0003-Ensures-inclusion-of-PDB-in-release-dll-if-so-reques.patch
-    )
-endforeach()
-
-find_program(NMAKE nmake REQUIRED)
-
-file(TO_NATIVE_PATH "${CURRENT_PACKAGES_DIR}" NATIVE_PACKAGES_DIR)
-file(TO_NATIVE_PATH "${CURRENT_PACKAGES_DIR}/share/gdal" NATIVE_DATA_DIR)
-file(TO_NATIVE_PATH "${CURRENT_PACKAGES_DIR}/share/gdal/html" NATIVE_HTML_DIR)
-
-# Setup proj4 libraries + include path
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/include" PROJ_INCLUDE_DIR)
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/lib/proj.lib" PROJ_LIBRARY_REL)
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/debug/lib/projd.lib" PROJ_LIBRARY_DBG)
-
-# Setup libpng libraries + include path
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/include" PNG_INCLUDE_DIR)
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/lib/libpng16.lib" PNG_LIBRARY_REL)
-file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}/debug/lib/libpng16d.lib" PNG_LIBRARY_DBG)
-
-set(NMAKE_OPTIONS
-    GDAL_HOME=${NATIVE_PACKAGES_DIR}
-    DATADIR=${NATIVE_DATA_DIR}
-    HTMLDIR=${NATIVE_HTML_DIR}
-    PROJ_INCLUDE=-I${PROJ_INCLUDE_DIR}
-    PNG_EXTERNAL_LIB=1
-    PNGDIR=${PNG_INCLUDE_DIR}
-    MSVC_VER=1900
-)
-
-if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-    list(APPEND NMAKE_OPTIONS WIN64=YES)
+# Compatibility with older Android versions https://github.com/OSGeo/gdal/pull/5941
+if(VCPKG_TARGET_IS_ANDROID AND ANRDOID_PLATFORM VERSION_LESS 24 AND (VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQUAL "arm"))
+    list(APPEND FEATURE_OPTIONS -DBUILD_WITHOUT_64BIT_OFFSET=ON)
 endif()
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    list(APPEND NMAKE_OPTIONS PROJ_FLAGS=-DPROJ_STATIC)
-else()    
-    # Enables PDBs for release and debug builds
-    list(APPEND NMAKE_OPTIONS WITH_PDB=1)
-endif()
+string(REPLACE "dynamic" "" qhull_target "Qhull::qhull${VCPKG_LIBRARY_LINKAGE}_r")
 
-if (VCPKG_CRT_LINKAGE STREQUAL static)
-    set(LINKAGE_FLAGS "/MT")
-else()
-    set(LINKAGE_FLAGS "/MD")
-endif()
-
-set(NMAKE_OPTIONS_REL
-    "${NMAKE_OPTIONS}"
-    CXX_CRT_FLAGS=${LINKAGE_FLAGS}
-    PROJ_LIBRARY=${PROJ_LIBRARY_REL}
-    PNG_LIB=${PNG_LIBRARY_REL}
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DVCPKG_HOST_TRIPLET=${HOST_TRIPLET} # for host pkgconf in PATH
+        ${FEATURE_OPTIONS}
+        -DBUILD_DOCS=OFF
+        -DBUILD_PYTHON_BINDINGS=OFF
+        -DBUILD_TESTING=OFF
+        -DCMAKE_DISABLE_FIND_PACKAGE_CSharp=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_Java=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_JNI=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_Perl=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_SWIG=ON
+        -DGDAL_USE_INTERNAL_LIBS=OFF
+        -DGDAL_USE_EXTERNAL_LIBS=OFF
+        -DGDAL_BUILD_OPTIONAL_DRIVERS=ON
+        -DOGR_BUILD_OPTIONAL_DRIVERS=ON
+        -DGDAL_CHECK_PACKAGE_MySQL_NAMES=unofficial-libmariadb
+        -DGDAL_CHECK_PACKAGE_MySQL_TARGETS=unofficial::libmariadb
+        -DMYSQL_LIBRARIES=unofficial::libmariadb
+        -DGDAL_CHECK_PACKAGE_NetCDF_NAMES=netCDF
+        -DGDAL_CHECK_PACKAGE_NetCDF_TARGETS=netCDF::netcdf
+        -DGDAL_CHECK_PACKAGE_QHULL_NAMES=Qhull
+        "-DGDAL_CHECK_PACKAGE_QHULL_TARGETS=${qhull_target}"
+        "-DQHULL_LIBRARY=${qhull_target}"
+    OPTIONS_DEBUG
+        -DBUILD_APPS=OFF
 )
-
-set(NMAKE_OPTIONS_DBG
-    "${NMAKE_OPTIONS}"
-    CXX_CRT_FLAGS="${LINKAGE_FLAGS}d"
-    PROJ_LIBRARY=${PROJ_LIBRARY_DBG}
-    PNG_LIB=${PNG_LIBRARY_DBG}	
-    DEBUG=1
-)
-################
-# Release build
-################
-message(STATUS "Building ${TARGET_TRIPLET}-rel")
-vcpkg_execute_required_process(
-    COMMAND ${NMAKE} -f makefile.vc 
-    "${NMAKE_OPTIONS_REL}"
-    WORKING_DIRECTORY ${SOURCE_PATH_RELEASE}
-    LOGNAME nmake-build-${TARGET_TRIPLET}-release
-)
-message(STATUS "Building ${TARGET_TRIPLET}-rel done")
-
-################
-# Debug build
-################
-message(STATUS "Building ${TARGET_TRIPLET}-dbg")
-vcpkg_execute_required_process(
-  COMMAND ${NMAKE} /G -f makefile.vc 
-  "${NMAKE_OPTIONS_DBG}"
-  WORKING_DIRECTORY ${SOURCE_PATH_DEBUG}
-  LOGNAME nmake-build-${TARGET_TRIPLET}-debug
-)
-message(STATUS "Building ${TARGET_TRIPLET}-dbg done")
-
-message(STATUS "Packaging ${TARGET_TRIPLET}")
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/share/gdal/html)
-
-vcpkg_execute_required_process(
-  COMMAND ${NMAKE} -f makefile.vc 
-  "${NMAKE_OPTIONS_REL}"
-  "install"
-  "devinstall"
-  WORKING_DIRECTORY ${SOURCE_PATH_RELEASE}
-  LOGNAME nmake-install-${TARGET_TRIPLET}
-)
-
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-  file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin)
-  file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/gdal_i.lib)
-  file(COPY ${SOURCE_PATH_DEBUG}/gdal.lib   DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib)
-  file(COPY ${SOURCE_PATH_RELEASE}/gdal.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib)
-  file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gdal.lib ${CURRENT_PACKAGES_DIR}/debug/lib/gdald.lib)
-else()
-  file(GLOB EXE_FILES ${CURRENT_PACKAGES_DIR}/bin/*.exe)
-  file(REMOVE ${EXE_FILES} ${CURRENT_PACKAGES_DIR}/lib/gdal.lib)
-  file(COPY ${SOURCE_PATH_DEBUG}/gdal111.dll DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin)
-  file(COPY ${SOURCE_PATH_DEBUG}/gdal_i.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib)
-  file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gdal_i.lib ${CURRENT_PACKAGES_DIR}/lib/gdal.lib)
-  file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gdal_i.lib ${CURRENT_PACKAGES_DIR}/debug/lib/gdald.lib)
-endif()
-
-# Copy over PDBs
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+vcpkg_fixup_pkgconfig()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/gdal)
+vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/gdal/GDALConfig.cmake"
+    "include(CMakeFindDependencyMacro)"
+    "include(CMakeFindDependencyMacro)
+# gdal needs a pkg-config tool. A host dependency provides pkgconf.
+get_filename_component(vcpkg_host_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../../${HOST_TRIPLET}\" ABSOLUTE)
+list(APPEND CMAKE_PROGRAM_PATH \"\${vcpkg_host_prefix}/tools/pkgconf\")"
+)
 
-# Handle copyright
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/gdal/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/gdal/copyright)
+if (BUILD_APPS)
+    vcpkg_copy_tools(
+        TOOL_NAMES
+            gdalinfo
+            gdalbuildvrt
+            gdaladdo
+            gdal_grid
+            gdal_translate
+            gdal_rasterize
+            gdalsrsinfo
+            gdalenhance
+            gdalmanage
+            gdaltransform
+            gdaltindex
+            gdaldem
+            gdal_create
+            gdal_viewshed
+            nearblack
+            ogrlineref
+            ogrtindex
+            gdalwarp
+            gdal_contour
+            gdallocationinfo
+            ogrinfo
+            ogr2ogr
+            ogrlineref
+            nearblack
+            gdalmdiminfo
+            gdalmdimtranslate
+            gnmanalyse
+            gnmmanage
+        AUTO_CLEAN
+    )
+endif()
 
-message(STATUS "Packaging ${TARGET_TRIPLET} done")
+file(REMOVE_RECURSE
+    "${CURRENT_PACKAGES_DIR}/debug/include"
+    "${CURRENT_PACKAGES_DIR}/debug/share"
+)
+
+file(REMOVE "${CURRENT_PACKAGES_DIR}/bin/gdal-config" "${CURRENT_PACKAGES_DIR}/debug/bin/gdal-config")
+
+file(GLOB bin_files "${CURRENT_PACKAGES_DIR}/bin/*")
+if(NOT bin_files)
+    file(REMOVE_RECURSE
+        "${CURRENT_PACKAGES_DIR}/bin"
+        "${CURRENT_PACKAGES_DIR}/debug/bin"
+    )
+endif()
+
+vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/cpl_config.h" "#define GDAL_PREFIX \"${CURRENT_PACKAGES_DIR}\"" "")
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(INSTALL "${SOURCE_PATH}/LICENSE.TXT" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

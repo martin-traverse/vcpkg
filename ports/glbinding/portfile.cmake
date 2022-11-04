@@ -1,73 +1,59 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/glbinding-2.1.1)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/cginternals/glbinding/archive/v2.1.1.zip"
-    FILENAME "glbinding-2.1.1.zip"
-    SHA512 66b21853a4f4760b7b22cafd5211958769c513e83be999018fe79cf56a9271e0e28566caaa2286393f54ac2154d564a68d12159598d03c965adf6756f3753f11
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO cginternals/glbinding
+    REF v3.1.0
+    SHA512 d7294c9a0dc47a7c107b134e5dfa78c5812fc6bf739b9fd778fa7ce946d5ea971839a65c3985e0915fd75311e4a85fb221d33a71856c460199eab0e7622f7151
+    HEAD_REF master
+    PATCHES
+        0001_force-system-install.patch
+        0002_fix-uwpmacro.patch
+        0003_fix-cmake-configs-paths.patch
+        0004_fix-config-expected-paths.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
-vcpkg_configure_cmake(SOURCE_PATH ${SOURCE_PATH})
-#vcpkg_build_cmake()
+
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DOPTION_BUILD_TESTS=OFF
+        -DOPTION_BUILD_GPU_TESTS=OFF
+        -DOPTION_BUILD_TOOLS=OFF
+        -DOPTION_BUILD_EXAMPLES=OFF
+        -DGIT_REV=0
+        -DCMAKE_DISABLE_FIND_PACKAGE_cpplocate=ON
+        -DOPTION_BUILD_EXAMPLES=OFF
+)
+
 vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/glbinding)
+vcpkg_copy_pdbs()
 
+## _IMPORT_PREFIX needs to go up one extra level in the directory tree.
+file(GLOB_RECURSE TARGET_CMAKES "${CURRENT_PACKAGES_DIR}/*-export.cmake")
+foreach(TARGET_CMAKE IN LISTS TARGET_CMAKES)
+    file(READ ${TARGET_CMAKE} _contents)
+    string(REPLACE
+[[
+get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+]]
+[[
+get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+]]
+        _contents "${_contents}")
+    file(WRITE ${TARGET_CMAKE} "${_contents}")
+endforeach()
 
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/share)
-file(RENAME ${CURRENT_PACKAGES_DIR}/cmake/glbinding ${CURRENT_PACKAGES_DIR}/share/glbinding)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/cmake)
 
-file(READ ${CURRENT_PACKAGES_DIR}/debug/cmake/glbinding/glbinding-export-debug.cmake GLBINDING_DEBUG_MODULE)
-string(REPLACE "\${_IMPORT_PREFIX}" "\${_IMPORT_PREFIX}/debug" GLBINDING_DEBUG_MODULE "${GLBINDING_DEBUG_MODULE}")
-string(REPLACE "glbindingd.dll" "bin/glbindingd.dll" GLBINDING_DEBUG_MODULE "${GLBINDING_DEBUG_MODULE}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/glbinding/glbinding-export-debug.cmake "${GLBINDING_DEBUG_MODULE}")
-file(READ ${CURRENT_PACKAGES_DIR}/share/glbinding/glbinding-export-release.cmake RELEASE_CONF)
-string(REPLACE "glbinding.dll" "bin/glbinding.dll" RELEASE_CONF "${RELEASE_CONF}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/glbinding/glbinding-export-release.cmake "${RELEASE_CONF}")
-file(REMOVE ${CURRENT_PACKAGES_DIR}/glbinding-config.cmake)
-file(REMOVE ${CURRENT_PACKAGES_DIR}/debug/glbinding-config.cmake)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/glbinding/glbinding-export.cmake ${CURRENT_PACKAGES_DIR}/share/glbinding/glbinding-config.cmake)
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/bin)
-    file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/debug/bin)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/glbinding.dll ${CURRENT_PACKAGES_DIR}/bin/glbinding.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/glbindingd.dll ${CURRENT_PACKAGES_DIR}/debug/bin/glbindingd.dll)
-endif()
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/cmake)
-file(RENAME ${CURRENT_PACKAGES_DIR}/data ${CURRENT_PACKAGES_DIR}/share/data)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/data)
-file(REMOVE ${CURRENT_PACKAGES_DIR}/AUTHORS
-            ${CURRENT_PACKAGES_DIR}/LICENSE
-            ${CURRENT_PACKAGES_DIR}/README.md
-            ${CURRENT_PACKAGES_DIR}/VERSION
-            ${CURRENT_PACKAGES_DIR}/debug/AUTHORS
-            ${CURRENT_PACKAGES_DIR}/debug/LICENSE
-            ${CURRENT_PACKAGES_DIR}/debug/README.md
-            ${CURRENT_PACKAGES_DIR}/debug/VERSION
-    )
-
-# There are some executables that are only built if glfw is found by CMake (see source/tools/*/CMakeLists.txt).
-# glfw is not listed as a dependency for glbinding, so this only happen on systems where package glfw3 is present.
-# glbinding's CMake doesn't offer the choice to exlude those tools from the build process, so deleting them here:
-file(REMOVE ${CURRENT_PACKAGES_DIR}/glcontexts.exe
-            ${CURRENT_PACKAGES_DIR}/glfunctions.exe
-            ${CURRENT_PACKAGES_DIR}/glmeta.exe
-            ${CURRENT_PACKAGES_DIR}/glqueries.exe
-            ${CURRENT_PACKAGES_DIR}/debug/glcontextsd.exe
-            ${CURRENT_PACKAGES_DIR}/debug/glfunctionsd.exe
-            ${CURRENT_PACKAGES_DIR}/debug/glmetad.exe
-            ${CURRENT_PACKAGES_DIR}/debug/glqueriesd.exe
-)
+# Remove files already published by egl-registry
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/KHR)
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/glbinding)
 file(RENAME ${CURRENT_PACKAGES_DIR}/share/glbinding/LICENSE ${CURRENT_PACKAGES_DIR}/share/glbinding/copyright)
-
-vcpkg_copy_pdbs()
+configure_file(${CMAKE_CURRENT_LIST_DIR}/usage ${CURRENT_PACKAGES_DIR}/share/glbinding/usage @ONLY)

@@ -1,28 +1,40 @@
-# libarchive uses winapi functions not available in WindowsStore
-if (VCPKG_CMAKE_SYSTEM_NAME STREQUAL WindowsStore)
-    message(FATAL_ERROR "Error: UWP builds are not supported.")
-endif()
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/libarchive-3.2.2)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/libarchive/libarchive/archive/v3.2.2.zip"
-    FILENAME "libarchive-3.2.2.zip"
-    SHA512 74abe8a66514aa344111f08e08015d2972545f6acf0923ff1ce7267bfc6c195ca562078a11d1c49ca36155c6b782b1f7ad08b71d93cb85fa892373479b0d1182)
-
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO libarchive/libarchive
+    REF 6c3301111caa75c76e1b2acb1afb2d71341932ef      #v3.6.1
+    SHA512 2fd56ac20e4249807174a2ae29de1cbca55c8f8f247500845f56fd1fd9ebf48c17b8a25a93156df71df9526c0061415ec7d72a6b46bbaca776047e381a2321a7
+    HEAD_REF master
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/fix-buildsystem.patch
-        ${CMAKE_CURRENT_LIST_DIR}/use-memset-not-bzero.patch
-        ${CMAKE_CURRENT_LIST_DIR}/override-broken-feature-checks.patch)
+        disable-warnings.patch
+        fix-buildsystem.patch
+        fix-cpu-set.patch
+        fix-deps.patch
+        pkgconfig-modules.patch
+)
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        bzip2   ENABLE_BZip2
+        bzip2   CMAKE_REQUIRE_FIND_PACKAGE_BZip2
+        libxml2 ENABLE_LIBXML2
+        libxml2 CMAKE_REQUIRE_FIND_PACKAGE_LibXml2
+        lz4     ENABLE_LZ4
+        lz4     CMAKE_REQUIRE_FIND_PACKAGE_lz4
+        lzma    ENABLE_LZMA
+        lzma    CMAKE_REQUIRE_FIND_PACKAGE_LibLZMA
+        lzo     ENABLE_LZO
+        openssl ENABLE_OPENSSL
+        openssl CMAKE_REQUIRE_FIND_PACKAGE_OpenSSL
+        zstd    ENABLE_ZSTD
+)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        -DENABLE_LZO2=OFF
+        ${FEATURE_OPTIONS}
+        -DENABLE_ZLIB=ON
+        -DENABLE_PCREPOSIX=OFF
+        -DPOSIX_REGEX_LIB=NONE
         -DENABLE_NETTLE=OFF
         -DENABLE_EXPAT=OFF
         -DENABLE_LibGCC=OFF
@@ -32,21 +44,29 @@ vcpkg_configure_cmake(
         -DENABLE_CAT=OFF
         -DENABLE_XATTR=OFF
         -DENABLE_ACL=OFF
-        -DENABLE_TEST=OFF
         -DENABLE_ICONV=OFF
-        -DPOSIX_REGEX_LIB=NONE
-    OPTIONS_DEBUG
-        -DARCHIVE_SKIP_HEADERS=ON)
+        -DENABLE_LIBB2=OFF
+        -DENABLE_TEST=OFF
+        -DENABLE_WERROR=OFF
+)
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
+
+vcpkg_fixup_pkgconfig()
+
 vcpkg_copy_pdbs()
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    vcpkg_apply_patches(
-        SOURCE_PATH ${CURRENT_PACKAGES_DIR}/include
-        PATCHES
-            ${CMAKE_CURRENT_LIST_DIR}/auto-define-libarchive-static.patch)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake.in" "${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-cmake-wrapper.cmake" @ONLY)
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/debug/bin")
 endif()
 
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/libarchive)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/libarchive/COPYING ${CURRENT_PACKAGES_DIR}/share/libarchive/copyright)
+foreach(header "${CURRENT_PACKAGES_DIR}/include/archive.h" "${CURRENT_PACKAGES_DIR}/include/archive_entry.h")
+    vcpkg_replace_string("${header}" "(!defined LIBARCHIVE_STATIC)" "0")
+endforeach()
+
+file(INSTALL "${CURRENT_PORT_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

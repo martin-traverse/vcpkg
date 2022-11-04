@@ -1,27 +1,37 @@
-#header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/eigen-eigen-67e894c6cd8f)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://bitbucket.org/eigen/eigen/get/3.3.3.tar.bz2"
-    FILENAME "eigen-3.3.3.tar.bz2"
-    SHA512 bb5a8b761371e516f0a344a7c9f6e369e21c2907c8548227933ca6010fc607a66c8d6ff7c41b1aec3dea7d482ce8c2a09e38ae5c7a2c5b16bdd8007e7a81ecc3
+vcpkg_buildpath_length_warning(37)
+
+vcpkg_from_gitlab(
+    GITLAB_URL https://gitlab.com
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO libeigen/eigen
+    REF 3.4.0
+    SHA512 ba75ecb760e32acf4ceaf27115468e65d4f77c44f8d519b5a13e7940af2c03a304ad433368cb6d55431f307c5c39e2666ab41d34442db3cf441638e51f5c3b6a
+    HEAD_REF master
+    PATCHES
+        remove_configure_checks.patch # This removes unnecessary configure checks. Eigen3 just installs headers not anything more.
+        fix-vectorized-reductions-half.patch # Remove this patch in the next update
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-file(GLOB_RECURSE GARBAGE ${SOURCE_PATH}/Eigen/CMakeLists.* ${SOURCE_PATH}/unsupported/Eigen/CMakeLists.*)
-if(GARBAGE)
-    file(REMOVE ${GARBAGE})
-endif()
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DBUILD_TESTING=OFF
+        -DEIGEN_BUILD_PKGCONFIG=ON
+    OPTIONS_RELEASE
+        -DCMAKEPACKAGE_INSTALL_DIR=${CURRENT_PACKAGES_DIR}/share/eigen3
+        -DPKGCONFIG_INSTALL_DIR=${CURRENT_PACKAGES_DIR}/lib/pkgconfig
+    OPTIONS_DEBUG
+        -DCMAKEPACKAGE_INSTALL_DIR=${CURRENT_PACKAGES_DIR}/debug/share/eigen3
+        -DPKGCONFIG_INSTALL_DIR=${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig
+)
 
-# Put the licence file where vcpkg expects it
-file(COPY ${SOURCE_PATH}/COPYING.README DESTINATION ${CURRENT_PACKAGES_DIR}/share/eigen3)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/eigen3/COPYING.README ${CURRENT_PACKAGES_DIR}/share/eigen3/copyright)
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup()
+vcpkg_fixup_pkgconfig()
 
-# Copy the eigen header files
-file(COPY ${SOURCE_PATH}/Eigen ${SOURCE_PATH}/signature_of_eigen3_matrix_library
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include)
-file(COPY ${SOURCE_PATH}/unsupported/Eigen
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include/unsupported)
+file(GLOB INCLUDES "${CURRENT_PACKAGES_DIR}/include/eigen3/*")
+# Copy the eigen header files to conventional location for user-wide MSBuild integration
+file(COPY ${INCLUDES} DESTINATION "${CURRENT_PACKAGES_DIR}/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
 
-# Copy signature file so tools can locate the eigen headers
-file(COPY DESTINATION ${CURRENT_PACKAGES_DIR}/include)
+file(INSTALL "${SOURCE_PATH}/COPYING.README" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

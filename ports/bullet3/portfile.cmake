@@ -1,35 +1,49 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/bullet3-2.86.1)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/bulletphysics/bullet3/archive/2.86.1.zip"
-    FILENAME "bullet3-2.86.1.zip"
-    SHA512 96c67bed63db4b7d46196cebda57b80543ea37bd19f013adcfe19ee6c2c3319ed007bcd1ebbe345d8c75b7e80588f4a7d85cb6a07e1a5eea759d97ce4d94f972
-)
-vcpkg_extract_source_archive(${ARCHIVE})
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_configure_cmake(
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO bulletphysics/bullet3
+    REF 3.22
+    SHA512 edacf643ca9621523812effe69a7499716bc65282c58c1f5b4eb4f17b2b1ab55a4f71b06a73483f57e57a5b032c234d09ba5fab9881321f2cbc3c27b43fdc95d
+    HEAD_REF master
+    PATCHES
+        cmake-fix.patch
+)
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        multithreading       BULLET2_MULTITHREADING
+        double-precision     USE_DOUBLE_PRECISION
+    INVERTED_FEATURES
+        rtti                 USE_MSVC_DISABLE_RTTI
+)
+
+vcpkg_cmake_configure(
     SOURCE_PATH ${SOURCE_PATH}
     OPTIONS
-        -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON
         -DUSE_MSVC_RUNTIME_LIBRARY_DLL=ON
-        -DBUILD_DEMOS=OFF
         -DBUILD_CPU_DEMOS=OFF
         -DBUILD_BULLET2_DEMOS=OFF
+        -DBUILD_OPENGL3_DEMOS=OFF
         -DBUILD_BULLET3=OFF
-        -DBUILD_EXTRAS=OFF
-        -DBUILD_UNIT_TESTS=OFF
-        -DBUILD_SHARED_LIBS=ON
+        -DBUILD_EXTRAS=ON
+        -DBUILD_BULLET_ROBOTICS_GUI_EXTRA=OFF
+        -DBUILD_BULLET_ROBOTICS_EXTRA=OFF
+        -DBUILD_GIMPACTUTILS_EXTRA=OFF        
+        -DBUILD_UNIT_TESTS=OFF        
         -DINSTALL_LIBS=ON
+        ${FEATURE_OPTIONS}
 )
 
-vcpkg_build_cmake()
-vcpkg_install_cmake()
-
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/lib/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/lib/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/bullet3)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/bullet3/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/bullet3/copyright)
-
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
+
+vcpkg_cmake_config_fixup(PACKAGE_NAME bullet CONFIG_PATH share/bullet)
+
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/include/bullet/BulletInverseDynamics/details")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

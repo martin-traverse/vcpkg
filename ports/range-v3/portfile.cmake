@@ -1,21 +1,26 @@
-#header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/range-v3-6eb5c831ffe12cd5cb96390dbe917ca1b248772d)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/ericniebler/range-v3/archive/6eb5c831ffe12cd5cb96390dbe917ca1b248772d.zip"
-    FILENAME "range-v3-6eb5c831ffe12cd5cb96390dbe917ca1b248772d.zip"
-    SHA512 2605af46c2c049f66dc982b1c4e506a8f115d47cc6c61a80f08921c667e52ad3097c485280ee43711c84b84a1490929e085b89cf9ad4c83b93222315210e92aa
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO ericniebler/range-v3
+    REF a81477931a8aa2ad025c6bda0609f38e09e4d7ec # Dude, where's my bored ape? (0.12.0)
+    SHA512 e58030bc7c281e90298025dc21fed9bdabda358cd847b59e5b58feb3e0b93fcf6398e3b8e2912e45deeed67f454c08d4fc4df7f8d0dc378b437612f15c0832fe
+    HEAD_REF master
 )
-vcpkg_download_distfile(DIFF
-    URLS "https://github.com/Microsoft/Range-V3-VS2015/compare/fork_base...2cb66781c8ac72a55fff1436e8fc8170a2ce8509.diff"
-    FILENAME "range-v3-fork_base_to_2cb66781c8ac72a55fff1436e8fc8170a2ce8509.diff"
-    SHA512 5c1728387967a5c14596d6d71e7c28f0206c22b652f4c96955711bcb805816eb106b62fcfde0a7d514eeed28fe6ce1f8c593fa3ef7df70f8da3b88b6d79c1515
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DRANGE_V3_TESTS=OFF
+        -DRANGE_V3_EXAMPLES=OFF
+        -DRANGE_V3_PERF=OFF
+        -DRANGE_V3_HEADER_CHECKS=OFF
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-vcpkg_apply_patches(SOURCE_PATH ${SOURCE_PATH} PATCHES ${DIFF})
+vcpkg_cmake_install()
 
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/range-v3)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/range-v3/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/range-v3/copyright)
-file(INSTALL ${SOURCE_PATH}/include DESTINATION ${CURRENT_PACKAGES_DIR} FILES_MATCHING PATTERN "*.hpp")
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/range-v3)
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug" "${CURRENT_PACKAGES_DIR}/lib")
+
 vcpkg_copy_pdbs()
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

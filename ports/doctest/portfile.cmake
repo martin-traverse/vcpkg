@@ -1,15 +1,22 @@
-#header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/doctest-1.1.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/onqtam/doctest/archive/1.1.0.zip"
-    FILENAME "doctest-1.1.0.zip"
-    SHA512 3cbdbb82d2dceff5a34aaed45222832c5767f21b64b271c41c2da7bae1f9e364a60758a8b6ce64285999afc30dd76de980e287663fa3119d0bcc1d2b45514e0b
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO doctest/doctest
+    REF v2.4.9
+    SHA512 c7337e2de371c18973a0f4cb76458d6ae387e78874c9bc8aa367ffd2d592514b774e7c5ebf44f83b7046f6b33c6905fd079c36f4c33eadf52b3d651d978182cb
+    HEAD_REF master
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-# Handle copyright
-file(INSTALL ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/doctest RENAME copyright)
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    DISABLE_PARALLEL_CONFIGURE
+    OPTIONS
+        -DDOCTEST_WITH_TESTS=OFF
+)
 
-# Copy header file
-file(INSTALL ${SOURCE_PATH}/doctest/doctest.h DESTINATION ${CURRENT_PACKAGES_DIR}/include/doctest)
+vcpkg_cmake_install()
+
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug" "${CURRENT_PACKAGES_DIR}/lib")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

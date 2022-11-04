@@ -1,37 +1,40 @@
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    message(STATUS "Warning: Static building not supported yet. Building dynamic.")
-    set(VCPKG_LIBRARY_LINKAGE dynamic)
-endif()
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/nanodbc-2.12.4)
+# Only static libraries are supported.
+# See https://github.com/nanodbc/nanodbc/issues/13
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/lexicalunit/nanodbc/archive/v2.12.4.tar.gz"
-    FILENAME "nanodbc-2.12.4.tar.gz"
-    SHA512 b9a924516b2a777e5f1497774997672320548722ed53413b0a7ad5d503e2f8ca1099f5059a912b7aae410928f4c4edcdfd02e4cfbf415976cd222697b354b4e6
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO nanodbc/nanodbc
+    REF 7404a4dd7697e188df5724ab95a7553d2fc404eb # v2.13.0
+    SHA512 35ca098e783d771f3df611bce84e9b8207a6a5b72c492d2f3909977bc91a7c22bb262c34768b0d97ebfbdf12eeda0214064a8ea171e7bdda7b759f93ff346f45
+    HEAD_REF master
     PATCHES
-		${CMAKE_CURRENT_LIST_DIR}/0001_cmake.patch
-		${CMAKE_CURRENT_LIST_DIR}/0002_msvc14_codecvt.patch
-		${CMAKE_CURRENT_LIST_DIR}/0003_export_def.patch
-		${CMAKE_CURRENT_LIST_DIR}/0004_unicode.patch
+        rename-version.patch
+        add-missing-include.patch
+        find-unixodbc.patch
+)
+file(RENAME "${SOURCE_PATH}/VERSION" "${SOURCE_PATH}/VERSION.txt")
+
+if(DEFINED NANODBC_ODBC_VERSION)
+    set(NANODBC_ODBC_VERSION -DNANODBC_ODBC_VERSION=${NANODBC_ODBC_VERSION})
+endif()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DNANODBC_DISABLE_EXAMPLES=ON
+        -DNANODBC_DISABLE_TESTS=ON
+        -DNANODBC_ENABLE_UNICODE=OFF
+        ${NANODBC_ODBC_VERSION}
 )
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-	OPTIONS
-		-DNANODBC_EXAMPLES=OFF
-		-DNANODBC_TEST=OFF
-		-DNANODBC_USE_UNICODE=ON
-)
+vcpkg_cmake_install()
 
-vcpkg_install_cmake()
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+if(VCPKG_TARGET_IS_WINDOWS)
+    vcpkg_cmake_config_fixup(CONFIG_PATH cmake)
+else()
+    vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
+endif()
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/nanodbc)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/nanodbc/LICENSE ${CURRENT_PACKAGES_DIR}/share/nanodbc/copyright)
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

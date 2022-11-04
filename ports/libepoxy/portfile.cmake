@@ -1,26 +1,40 @@
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    message(STATUS "Warning: Static building not supported yet. Building dynamic.")
-    set(VCPKG_LIBRARY_LINKAGE dynamic)
+if(VCPKG_TARGET_IS_WINDOWS)
+    vcpkg_check_linkage(ONLY_DYNAMIC_LIBRARY)
 endif()
 
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/libepoxy-2432daf4cf58b5ff11e008ca34811588285c43b3)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/anholt/libepoxy/archive/2432daf4cf58b5ff11e008ca34811588285c43b3.zip"
-    FILENAME "libepoxy-2432daf4cf58b5ff11e008ca34811588285c43b3.zip"
-    SHA512 70b59b6c5722eb87522927fdedab44f74ffd2d71d2ae42509de07b0c3e13f71320b25da0d4c75dca75c4208ea7a525483267d6ccb8acd5274728c015c7ac4006)
+if(VCPKG_TARGET_IS_LINUX AND NOT EXISTS "/usr/share/doc/libgles2/copyright")
+    message(STATUS "libgles2-mesa-dev must be installed before libepoxy can build. Install it with \"apt-get install libgles2-mesa-dev\".")
+endif()
 
-vcpkg_extract_source_archive(${ARCHIVE})
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO anholt/libepoxy
+    REF 1.5.9
+    SHA512 2b7c269063dc1c156c1a2a525e27a0a323baaa7fa4ac091536e4cc5fc4c247efe9770d7979dbddb54deb14853008bb6f4d67fddd26d87cbd264eb1e6e65bc5a8
+    HEAD_REF master
+)
 
-# ensure python is on path - not for meson but some source generation scripts
-vcpkg_find_acquire_program(PYTHON3)
-get_filename_component(PYTHON3_PATH ${PYTHON3} DIRECTORY)
-set(ENV{PATH} "$ENV{PATH};${PYTHON3_PATH}")
+if (VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_OSX)
+    set(OPTIONS -Dglx=no -Degl=no -Dx11=false)
+else()
+    set(OPTIONS -Dglx=yes -Degl=yes -Dx11=true)
+endif()
+if(VCPKG_TARGET_IS_WINDOWS)
+    list(APPEND OPTIONS -Dc_std=c99)
+endif()
 
-vcpkg_configure_meson(SOURCE_PATH ${SOURCE_PATH})
+vcpkg_configure_meson(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        ${OPTIONS}
+        -Dtests=false
+)
 vcpkg_install_meson()
-
 vcpkg_copy_pdbs()
 
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/libepoxy)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/libepoxy/COPYING ${CURRENT_PACKAGES_DIR}/share/libepoxy/copyright)
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/pkgconfig")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share/pkgconfig")
+
+file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

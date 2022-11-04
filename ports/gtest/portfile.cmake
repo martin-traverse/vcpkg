@@ -1,66 +1,59 @@
-include(vcpkg_common_functions)
-
-find_program(GIT git)
-
-set(GIT_URL "https://github.com/google/googletest.git")
-set(GIT_TAG "release-1.8.0")
-
-if(NOT EXISTS "${DOWNLOADS}/googletest.git")
-    message(STATUS "Cloning")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} clone --bare ${GIT_URL} ${DOWNLOADS}/googletest.git
-        WORKING_DIRECTORY ${DOWNLOADS}
-        LOGNAME clone
-    )
+if (EXISTS "${CURRENT_BUILDTREES_DIR}/src/.git")
+    file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/src)
 endif()
-message(STATUS "Cloning done")
 
-if(NOT EXISTS "${CURRENT_BUILDTREES_DIR}/src/.git")
-    message(STATUS "Adding worktree and patching")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} worktree add -f --detach ${CURRENT_BUILDTREES_DIR}/src ${GIT_TAG}
-        WORKING_DIRECTORY ${DOWNLOADS}/googletest.git
-        LOGNAME worktree
-    )
-    message(STATUS "Patching")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} am ${CMAKE_CURRENT_LIST_DIR}/0001-Enable-C-11-features-for-VS2015-fix-appveyor-fail.patch --ignore-whitespace --whitespace=fix
-        WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}/src
-        LOGNAME patch
-    )
-endif()
-message(STATUS "Adding worktree and patching done")
-
-vcpkg_configure_cmake(
-    SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO google/googletest
+    REF release-1.12.1
+    SHA512 a9104dc6c53747e36e7dd7bb93dfce51a558bd31b487a9ef08def095518e1296da140e0db263e0644d9055dbd903c0cb69380cb2322941dbfb04780ef247df9c
+    HEAD_REF main
+    PATCHES
+        clang-tidy-no-lint.patch
+        fix-main-lib-path.patch
 )
 
-vcpkg_install_cmake()
+string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "dynamic" GTEST_FORCE_SHARED_CRT)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH ${SOURCE_PATH}
+    OPTIONS
+        -DBUILD_GMOCK=ON
+        -Dgtest_force_shared_crt=${GTEST_FORCE_SHARED_CRT}
+)
+
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/GTest)
+
+file(
+    INSTALL
+        "${SOURCE_PATH}/googletest/src/gtest.cc"
+        "${SOURCE_PATH}/googletest/src/gtest_main.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-all.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-assertion-result.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-death-test.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-filepath.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-internal-inl.h"
+        "${SOURCE_PATH}/googletest/src/gtest-matchers.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-port.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-printers.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-test-part.cc"
+        "${SOURCE_PATH}/googletest/src/gtest-typed-test.cc"
+    DESTINATION
+        ${CURRENT_PACKAGES_DIR}/src
+)
+
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(INSTALL ${CURRENT_BUILDTREES_DIR}/src/googletest/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/gtest RENAME copyright)
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-    file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/bin/)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gtest.dll ${CURRENT_PACKAGES_DIR}/bin/gtest.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gtest_main.dll ${CURRENT_PACKAGES_DIR}/bin/gtest_main.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gmock.dll ${CURRENT_PACKAGES_DIR}/bin/gmock.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gmock_main.dll ${CURRENT_PACKAGES_DIR}/bin/gmock_main.dll)
-    file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/debug/bin/)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gtest.dll ${CURRENT_PACKAGES_DIR}/debug/bin/gtest.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gtest_main.dll ${CURRENT_PACKAGES_DIR}/debug/bin/gtest_main.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gmock.dll ${CURRENT_PACKAGES_DIR}/debug/bin/gmock.dll)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gmock_main.dll ${CURRENT_PACKAGES_DIR}/debug/bin/gmock_main.dll)
+vcpkg_fixup_pkgconfig()
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/gmock_main.pc" "libdir=\${prefix}/lib" "libdir=\${prefix}/lib/manual-link")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/gtest_main.pc" "libdir=\${prefix}/lib" "libdir=\${prefix}/lib/manual-link")
 endif()
-
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/lib/manual-link)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gtest.lib ${CURRENT_PACKAGES_DIR}/lib/manual-link/gtest.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gtest_main.lib ${CURRENT_PACKAGES_DIR}/lib/manual-link/gtest_main.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gmock.lib ${CURRENT_PACKAGES_DIR}/lib/manual-link/gmock.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/gmock_main.lib ${CURRENT_PACKAGES_DIR}/lib/manual-link/gmock_main.lib)
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link)
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gtest.lib ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link/gtest.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gtest_main.lib ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link/gtest_main.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gmock.lib ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link/gmock.lib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/gmock_main.lib ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link/gmock_main.lib)
-
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/gmock_main.pc" "libdir=\${prefix}/lib" "libdir=\${prefix}/lib/manual-link")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/gtest_main.pc" "libdir=\${prefix}/lib" "libdir=\${prefix}/lib/manual-link")
+endif()
 vcpkg_copy_pdbs()
+
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

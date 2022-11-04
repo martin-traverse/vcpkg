@@ -1,30 +1,42 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO lz4/lz4
+    REF v1.9.3
+    SHA512 c246b0bda881ee9399fa1be490fa39f43b291bb1d9db72dba8a85db1a50aad416a97e9b300eee3d2a4203c2bd88bda2762e81bc229c3aa409ad217eb306a454c
+    HEAD_REF dev
+    PATCHES
+        0001-Fix-potential-memory-corruption-with-negative-memmov.patch
+)
 
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/lz4-1.7.5)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/lz4/lz4/archive/v1.7.5.zip"
-    FILENAME "lz4-1.7.5.zip"
-    SHA512 09968b67a5cd8555f6e1d95b99971a82d228c6d8d9f9dd9e9a33c9633bed9bcf1e370c2ff44e58c6ca72d103c149585b3e83061c690f3e857eb5f53d586f86a4)
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
 
-vcpkg_extract_source_archive(${ARCHIVE})
-
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
-
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    PREFER_NINJA
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS_DEBUG
-        -DLZ4_SKIP_INCLUDES=ON)
+        -DCMAKE_DEBUG_POSTFIX=d
+)
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
 vcpkg_copy_pdbs()
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    vcpkg_apply_patches(
-        SOURCE_PATH ${CURRENT_PACKAGES_DIR}/include
-        PATCHES
-            ${CMAKE_CURRENT_LIST_DIR}/auto-define-import-macro.patch)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+    set(DLL_IMPORT "1 && defined(_MSC_VER)")
+else()
+    set(DLL_IMPORT "0")
+endif()
+foreach(FILE lz4.h lz4frame.h)
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/${FILE}"
+        "defined(LZ4_DLL_IMPORT) && (LZ4_DLL_IMPORT==1)"
+        "${DLL_IMPORT}"
+    )
+endforeach()
+
+vcpkg_cmake_config_fixup()
+vcpkg_fixup_pkgconfig()
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/liblz4.pc" " -llz4" " -llz4d")
 endif()
 
-file(COPY ${SOURCE_PATH}/lib/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/lz4)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/lz4/LICENSE ${CURRENT_PACKAGES_DIR}/share/lz4/copyright)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+file(INSTALL "${SOURCE_PATH}/lib/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

@@ -1,30 +1,47 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/expat-2.1.1)
-vcpkg_download_distfile(ARCHIVE_FILE
-    URLS "http://downloads.sourceforge.net/project/expat/expat/2.1.1/expat-2.1.1.tar.bz2"
-    FILENAME "expat-2.1.1.tar.bz2"
-    SHA512 088e2ef3434f2affd4fc79fe46f0e9826b9b4c3931ddc780cd18892f1cd1e11365169c6807f45916a56bb6abcc627dcd17a23f970be0bf464f048f5be2713628
-)
-vcpkg_extract_source_archive(${ARCHIVE_FILE})
+file(READ ${CMAKE_CURRENT_LIST_DIR}/vcpkg.json vcpkg_json)
+string(JSON VERSION GET "${vcpkg_json}" "version")
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    set(EXPAT_LINKAGE ON)
-else()
-    set(EXPAT_LINKAGE OFF)
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO libexpat/libexpat
+    REF R_2_4_9
+    SHA512 6bf92516ce2642b2cdcbc586aaac0f706f125394fa428670f9b8b042a1f393e3b9dda1a24e58e6c8ad8b4ff3303cb5a8700628c6c04a881a06251c08be3759d3
+    HEAD_REF master
+    PATCHES
+        "pkgconfig_fix.patch" # https://github.com/libexpat/libexpat/pull/656
+        "mingw_static_fix.patch" # https://github.com/libexpat/libexpat/pull/658
+)
+
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" EXPAT_LINKAGE)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}/expat"
+    OPTIONS
+        -DEXPAT_BUILD_EXAMPLES=OFF
+        -DEXPAT_BUILD_TESTS=OFF
+        -DEXPAT_BUILD_TOOLS=OFF
+        -DEXPAT_BUILD_DOCS=OFF
+        -DEXPAT_SHARED_LIBS=${EXPAT_LINKAGE}
+        -DEXPAT_BUILD_PKGCONFIG=ON
+)
+
+vcpkg_cmake_install()
+
+vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/expat-${VERSION}")
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/doc")
+
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/expat_external.h"
+        "! defined(XML_STATIC)"
+        "/* vcpkg static build ! defined(XML_STATIC) */ 0"
+    )
 endif()
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS
-        -DBUILD_examples=OFF
-        -DBUILD_tests=OFF
-        -DBUILD_tools=OFF
-        -DBUILD_shared=${EXPAT_LINKAGE}
-)
-
-vcpkg_install_cmake()
-
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include ${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig ${CURRENT_PACKAGES_DIR}/lib/pkgconfig)
-file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/expat RENAME copyright)
-
 vcpkg_copy_pdbs()
+
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(INSTALL "${SOURCE_PATH}/expat/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

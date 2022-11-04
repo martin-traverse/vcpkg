@@ -1,76 +1,46 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/opus-1.1.4)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://downloads.xiph.org/releases/opus/opus-1.1.4.tar.gz"
-    FILENAME "opus-1.1.4.tar.gz"
-    SHA512 57f14b9e8037eaa02a4d86535d3bbcceca249310fbc9ef1a452cc19dd442d4cf338d5db241d20605c236e22549df2c8266b7486c5f1666b80c532afd52cb3585
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO xiph/opus
+    REF 5c94ec3205c30171ffd01056f5b4622b7c0ab54c
+    SHA512 2423b1fc86d5b46c32d8e3bde5fc2b410a5c25c001995ce234a94a3a6c7a8b1446fdf19eafe9d6a8a7356fe0857697053db5eb8380d18f8111818aa770b4c4ea
+    HEAD_REF master
+    PATCHES fix-pkgconfig-version.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    set(RELEASE_CONFIGURATION "Release")
-    set(DEBUG_CONFIGURATION "Debug")
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        avx AVX_SUPPORTED
+)
+
+if(VCPKG_TARGET_IS_MINGW)
+    set(STACK_PROTECTOR OFF)
+    string(APPEND VCPKG_C_FLAGS "-D_FORTIFY_SOURCE=0")
+    string(APPEND VCPKG_CXX_FLAGS "-D_FORTIFY_SOURCE=0")
+elseif(VCPKG_TARGET_IS_EMSCRIPTEN)
+    set(STACK_PROTECTOR OFF)
 else()
-    set(RELEASE_CONFIGURATION "ReleaseDll")
-    set(DEBUG_CONFIGURATION "DebugDll")
+    set(STACK_PROTECTOR ON)
 endif()
 
-if(TARGET_TRIPLET MATCHES "x86")
-    set(ARCH_DIR "Win32")
-elseif(TARGET_TRIPLET MATCHES "x64")
-    set(ARCH_DIR "x64")
-else()
-    message("Architecture not supported")
-endif()
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS ${FEATURE_OPTIONS}
+        -DPACKAGE_VERSION=1.3.1
+        -DOPUS_STACK_PROTECTOR=${STACK_PROTECTOR}
+        -DOPUS_INSTALL_PKG_CONFIG_MODULE=ON
+        -DOPUS_INSTALL_CMAKE_CONFIG_MODULE=ON
+        -DOPUS_BUILD_PROGRAMS=OFF
+        -DOPUS_BUILD_TESTING=OFF
+)
+vcpkg_cmake_install()
+vcpkg_copy_pdbs()
 
-function(build_project PROJECT_PATH)
-    vcpkg_build_msbuild(
-        PROJECT_PATH ${PROJECT_PATH}
-        RELEASE_CONFIGURATION ${RELEASE_CONFIGURATION}
-        DEBUG_CONFIGURATION ${DEBUG_CONFIGURATION}
-    )
-endfunction(build_project)
-
-
-build_project(${SOURCE_PATH}/win32/VS2015/celt.vcxproj)
-build_project(${SOURCE_PATH}/win32/VS2015/silk_common.vcxproj)
-build_project(${SOURCE_PATH}/win32/VS2015/silk_float.vcxproj)
-build_project(${SOURCE_PATH}/win32/VS2015/silk_fixed.vcxproj)
-build_project(${SOURCE_PATH}/win32/VS2015/opus.vcxproj)
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/Opus)
+vcpkg_fixup_pkgconfig(SYSTEM_LIBRARIES m)
 
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
-    # Install release build
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/opus.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/celt.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/silk_common.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/silk_fixed.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/silk_float.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/lib/cmake"
+                    "${CURRENT_PACKAGES_DIR}/lib/cmake"
+                    "${CURRENT_PACKAGES_DIR}/debug/include")
 
-    # Install debug build
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/opus.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/opus.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/celt.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/celt.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_common.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_common.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_fixed.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_fixed.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_float.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/silk_float.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-else()
-    # Install release build
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/opus.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${RELEASE_CONFIGURATION}/opus.dll DESTINATION ${CURRENT_PACKAGES_DIR}/bin/)
-
-    # Install debug build
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/opus.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/opus.dll DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin/)
-    file(INSTALL ${SOURCE_PATH}/win32/VS2015/${ARCH_DIR}/${DEBUG_CONFIGURATION}/opus.pdb DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin/)
-endif()
-
-# Install headers
-file(INSTALL ${SOURCE_PATH}/include DESTINATION ${CURRENT_PACKAGES_DIR}/include RENAME opus)
-
-# Handle copyright
-file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/opus RENAME copyright)
+file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

@@ -1,41 +1,95 @@
 function(vcpkg_build_cmake)
-    cmake_parse_arguments(_bc "MSVC_64_TOOLSET;DISABLE_PARALLEL" "" "" ${ARGN})
-
-    set(MSVC_EXTRA_ARGS
-        "/p:VCPkgLocalAppDataDisabled=true"
-        "/p:UseIntelMKL=No"
+    cmake_parse_arguments(PARSE_ARGV 0 "arg"
+        "DISABLE_PARALLEL;ADD_BIN_TO_PATH"
+        "TARGET;LOGFILE_ROOT"
+        ""
     )
 
-    # Specifies the architecture of the toolset, NOT the architecture of the produced binary
-    # This can help libraries that cause the linker to run out of memory.
-    # https://support.microsoft.com/en-us/help/2891057/linker-fatal-error-lnk1102-out-of-memory
-    if (_bc_MSVC_64_TOOLSET)
-        list(APPEND MSVC_EXTRA_ARGS "/p:PreferredToolArchitecture=x64")
+    if(Z_VCPKG_CMAKE_BUILD_GUARD)
+        message(FATAL_ERROR "The ${PORT} port already depends on vcpkg-cmake; using both vcpkg-cmake and vcpkg_build_cmake in the same port is unsupported.")
     endif()
 
-    if (NOT _bc_DISABLE_PARALLEL)
-        list(APPEND MSVC_EXTRA_ARGS "/m")
+    if(NOT DEFINED arg_LOGFILE_ROOT)
+        set(arg_LOGFILE_ROOT "build")
     endif()
 
-    if(EXISTS ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/build.ninja)
-        set(BUILD_ARGS -v) # verbose output
+    vcpkg_list(SET build_param)
+    vcpkg_list(SET parallel_param)
+    vcpkg_list(SET no_parallel_param)
+
+    if("${Z_VCPKG_CMAKE_GENERATOR}" STREQUAL "Ninja")
+        vcpkg_list(SET build_param "-v") # verbose output
+        vcpkg_list(SET parallel_param "-j${VCPKG_CONCURRENCY}")
+        vcpkg_list(SET no_parallel_param "-j1")
+    elseif("${Z_VCPKG_CMAKE_GENERATOR}" MATCHES "^Visual Studio")
+        vcpkg_list(SET build_param
+            "/p:VCPkgLocalAppDataDisabled=true"
+            "/p:UseIntelMKL=No"
+        )
+        vcpkg_list(SET parallel_param "/m")
+    elseif("${Z_VCPKG_CMAKE_GENERATOR}" STREQUAL "NMake Makefiles")
+        # No options are currently added for nmake builds
+    elseif(Z_VCPKG_CMAKE_GENERATOR STREQUAL "Unix Makefiles")
+        vcpkg_list(SET build_param "VERBOSE=1")
+        vcpkg_list(SET parallel_param "-j${VCPKG_CONCURRENCY}")
+        vcpkg_list(SET no_parallel_param "")
+    elseif(Z_VCPKG_CMAKE_GENERATOR STREQUAL "Xcode")
+        vcpkg_list(SET parallel_param -jobs "${VCPKG_CONCURRENCY}")
+        vcpkg_list(SET no_parallel_param -jobs 1)
     else()
-        set(BUILD_ARGS ${MSVC_EXTRA_ARGS})
+        message(FATAL_ERROR "Unrecognized GENERATOR setting from vcpkg_configure_cmake(). Valid generators are: Ninja, Visual Studio, and NMake Makefiles")
     endif()
 
-    message(STATUS "Build ${TARGET_TRIPLET}-rel")
-    vcpkg_execute_required_process(
-        COMMAND ${CMAKE_COMMAND} --build . --config Release -- ${BUILD_ARGS}
-        WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel
-        LOGNAME build-${TARGET_TRIPLET}-rel
-    )
-    message(STATUS "Build ${TARGET_TRIPLET}-rel done")
+    vcpkg_list(SET target_param)
+    if(arg_TARGET)
+        vcpkg_list(SET target_param "--target" "${arg_TARGET}")
+    endif()
 
-    message(STATUS "Build ${TARGET_TRIPLET}-dbg")
-    vcpkg_execute_required_process(
-        COMMAND ${CMAKE_COMMAND} --build . --config Debug -- ${BUILD_ARGS}
-        WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg
-        LOGNAME build-${TARGET_TRIPLET}-dbg
-    )
-    message(STATUS "Build ${TARGET_TRIPLET}-dbg done")
+    foreach(build_type IN ITEMS debug release)
+        if(NOT DEFINED VCPKG_BUILD_TYPE OR "${VCPKG_BUILD_TYPE}" STREQUAL "${build_type}")
+            if("${build_type}" STREQUAL "debug")
+                set(short_build_type "dbg")
+                set(config "Debug")
+            else()
+                set(short_build_type "rel")
+                set(config "Release")
+            endif()
+
+            message(STATUS "Building ${TARGET_TRIPLET}-${short_build_type}")
+
+            if(arg_ADD_BIN_TO_PATH)
+                vcpkg_backup_env_variables(VARS PATH)
+                if("${build_type}" STREQUAL "debug")
+                    vcpkg_add_to_path(PREPEND "${CURRENT_INSTALLED_DIR}/debug/bin")
+                else()
+                    vcpkg_add_to_path(PREPEND "${CURRENT_INSTALLED_DIR}/bin")
+                endif()
+            endif()
+
+            if(arg_DISABLE_PARALLEL)
+                vcpkg_execute_build_process(
+                    COMMAND
+                        "${CMAKE_COMMAND}" --build . --config "${config}" ${target_param}
+                        -- ${build_param} ${no_parallel_param}
+                    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-${short_build_type}"
+                    LOGNAME "${arg_LOGFILE_ROOT}-${TARGET_TRIPLET}-${short_build_type}"
+                )
+            else()
+                vcpkg_execute_build_process(
+                    COMMAND
+                        "${CMAKE_COMMAND}" --build . --config "${config}" ${target_param}
+                        -- ${build_param} ${parallel_param}
+                    NO_PARALLEL_COMMAND
+                        "${CMAKE_COMMAND}" --build . --config "${config}" ${target_param}
+                        -- ${build_param} ${no_parallel_param}
+                    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-${short_build_type}"
+                    LOGNAME "${arg_LOGFILE_ROOT}-${TARGET_TRIPLET}-${short_build_type}"
+                )
+            endif()
+
+            if(arg_ADD_BIN_TO_PATH)
+                vcpkg_restore_env_variables(VARS PATH)
+            endif()
+        endif()
+    endforeach()
 endfunction()

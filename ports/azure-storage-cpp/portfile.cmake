@@ -1,33 +1,32 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/azure-storage-cpp-3.0.0)
+message(WARNING "azure-storage-cpp is no longer actively developed. Instead, users should migrate to the new sdk:azure-core-cpp")
 
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/Azure/azure-storage-cpp/archive/v3.0.0.tar.gz"
-    FILENAME "azure-storage-cpp/v3.0.0.tar.gz"
-    SHA512 45d0d7f8cc350a16cff0371cdd442e851912c89061acfec559482e8f79cebafffd8681b32a30b878e329235cd3aaad5d2ff797d1148302e3109cf5111df14b97
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
-    PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/cmake.patch
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO Azure/azure-storage-cpp
+    REF v7.5.0
+    SHA512 83eabcaf2114c8af1cabbc96b6ef2b57c934a06f68e7a870adf336feaa19edd57aedaf8507d5c40500e46d4e77f5059f9286e319fe7cadeb9ffc8fa018fb030c
+    HEAD_REF master
 )
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}/Microsoft.WindowsAzure.Storage
+    PREFER_NINJA
     OPTIONS
+        -DCMAKE_FIND_FRAMEWORK=LAST
         -DBUILD_TESTS=OFF
         -DBUILD_SAMPLES=OFF
+    OPTIONS_RELEASE
+        -DGETTEXT_LIB_DIR=${CURRENT_INSTALLED_DIR}/lib
+    OPTIONS_DEBUG
+        -DGETTEXT_LIB_DIR=${CURRENT_INSTALLED_DIR}/debug/lib
 )
 
 vcpkg_install_cmake()
 
 file(INSTALL
     ${SOURCE_PATH}/LICENSE.txt
-    DESTINATION ${CURRENT_PACKAGES_DIR}/share/azure-storage-cpp RENAME copyright)
-file(REMOVE_RECURSE 
+    DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)
+file(REMOVE_RECURSE
     ${CURRENT_PACKAGES_DIR}/debug/include)
 
 vcpkg_copy_pdbs()
-

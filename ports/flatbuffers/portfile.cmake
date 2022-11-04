@@ -1,65 +1,51 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-    message("Building DLLs not supported. Building static instead.")
-    set(VCPKG_LIBRARY_LINKAGE static)
-endif()
-
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/flatbuffers-1.6.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/google/flatbuffers/archive/v1.6.0.zip"
-    FILENAME "flatbuffers-1.6.0.zip"
-    SHA512 c23043a54d7055f4e0a0164fdafd3f1d60292e57d62d20d30f641c9da90935d14da847f86239a19f777e68b707cfb25452da9192607a3a399ab25ce06b31c282
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO google/flatbuffers
+    REF v2.0.6
+    SHA512 be631f34064c28d81876bf137c796e9736623cf2cc4f2a05dd45372e7195729c99fad1fa795f8ce71a408756a842edbdc0c3bc714a7cf63203a1de8681d86fb6
+    HEAD_REF master
+    PATCHES
+        ignore_use_of_cmake_toolchain_file.patch
+        no-werror.patch
+        fix-uwp-build.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-set(OPTIONS)
-if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-    list(APPEND OPTIONS -DFLATBUFFERS_BUILD_SHAREDLIB=ON)
+set(options "")
+if(VCPKG_CROSSCOMPILING)
+    list(APPEND options -DFLATBUFFERS_BUILD_FLATC=OFF -DFLATBUFFERS_BUILD_FLATHASH=OFF)
 endif()
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    PREFER_NINJA # Disable this option if project cannot be built with Ninja
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DFLATBUFFERS_BUILD_TESTS=OFF
         -DFLATBUFFERS_BUILD_GRPCTEST=OFF
-        ${OPTIONS}
-    # OPTIONS_RELEASE -DOPTIMIZE=1
-    # OPTIONS_DEBUG -DDEBUGGABLE=1
+        ${options}
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/flatbuffers)
+vcpkg_fixup_pkgconfig()
 
-if(EXISTS ${CURRENT_PACKAGES_DIR}/debug/bin)
-    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/bin)
-endif()
-if(EXISTS ${CURRENT_PACKAGES_DIR}/bin/flatc.exe)
-    make_directory(${CURRENT_PACKAGES_DIR}/tools/flatbuffers)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/bin/flatc.exe ${CURRENT_PACKAGES_DIR}/tools/flatbuffers/flatc.exe)
-    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin)
-endif()
-if(EXISTS ${CURRENT_PACKAGES_DIR}/lib/flatbuffers.dll)
-    make_directory(${CURRENT_PACKAGES_DIR}/bin)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/lib/flatbuffers.dll ${CURRENT_PACKAGES_DIR}/bin/flatbuffers.dll)
-endif()
-if(EXISTS ${CURRENT_PACKAGES_DIR}/debug/lib/flatbuffers.dll)
-    make_directory(${CURRENT_PACKAGES_DIR}/debug/bin)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/flatbuffers.dll ${CURRENT_PACKAGES_DIR}/debug/bin/flatbuffers.dll)
+file(GLOB flatc_path ${CURRENT_PACKAGES_DIR}/bin/flatc*)
+if(flatc_path)
+    make_directory("${CURRENT_PACKAGES_DIR}/tools/flatbuffers")
+    get_filename_component(flatc_executable ${flatc_path} NAME)
+    file(
+        RENAME
+        ${flatc_path}
+        ${CURRENT_PACKAGES_DIR}/tools/flatbuffers/${flatc_executable}
+    )
+    vcpkg_copy_tool_dependencies("${CURRENT_PACKAGES_DIR}/tools/flatbuffers")
+else()
+    file(APPEND "${CURRENT_PACKAGES_DIR}/share/flatbuffers/FlatbuffersConfig.cmake"
+"include(\"\${CMAKE_CURRENT_LIST_DIR}/../../../${HOST_TRIPLET}/share/flatbuffers/FlatcTargets.cmake\")\n")
 endif()
 
-vcpkg_copy_tool_dependencies(${CURRENT_PACKAGES_DIR}/tools/flatbuffers)
-
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/debug/bin")
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/flatbuffers)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/flatbuffers/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/flatbuffers/copyright)
+file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

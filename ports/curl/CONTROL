@@ -1,4 +1,0 @@
-Source: curl
-Version: 7.51.0-3
-Build-Depends: zlib, openssl, libssh2
-Description: A library for transferring data with URLs

@@ -1,75 +1,98 @@
-if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    message(STATUS "Warning: Dynamic building not supported yet. Building static.")
-    set(VCPKG_LIBRARY_LINKAGE static)
-endif()
-include(vcpkg_common_functions)
-
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/grpc-1.1.2)
-
-if(EXISTS "${CURRENT_BUILDTREES_DIR}/src/.git")
-    file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/src)
+if(VCPKG_TARGET_IS_WINDOWS)
+    vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 endif()
 
-vcpkg_download_distfile(ARCHIVE_FILE
-    URLS "https://github.com/grpc/grpc/archive/v1.1.2.zip"
-    FILENAME "grpc-v1.1.2.tar.gz"
-    SHA512 6e0666ecb72f0a78148fadf627e05b5ba0f1c893919f1e691775d09374e7c4b9b05ff1d276e716ac2a81eb2a3fb88c4a095928589286d2f083bd60539050f5d9
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO grpc/grpc
+    REF v1.49.0
+    SHA512 592413f0f907ec5c7c6b22366e418c589a653ef105b61bf0f98fc64dc40ccea0d2fadc9af9ade62bffa99cafec6e1305300cb9531202923614fe308b7f831210
+    HEAD_REF master
+    PATCHES
+        00001-fix-uwp.patch
+        00002-static-linking-in-linux.patch
+        00003-undef-base64-macro.patch
+        00004-link-gdi32-on-windows.patch
+        00005-fix-uwp-error.patch
+        00009-use-system-upb.patch
+        snprintf.patch
+        00012-fix-use-cxx17.patch
+        00014-pkgconfig-upbdefs.patch
+        00015-disable-download-archive.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE_FILE})
 
-# patch is from https://github.com/grpc/grpc/commit/a5fac1f8a00b0ba6ca784baa4783ab947579693b
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
-    PATCHES ${CMAKE_CURRENT_LIST_DIR}/grpc-fix-cmake-build.patch
+if(NOT TARGET_TRIPLET STREQUAL HOST_TRIPLET)
+    vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/tools/grpc")
+endif()
+
+string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "static" gRPC_MSVC_STATIC_RUNTIME)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" gRPC_STATIC_LINKING)
+
+if(VCPKG_TARGET_IS_UWP)
+    set(cares_CARES_PROVIDER OFF)
+else()
+    set(cares_CARES_PROVIDER "package")
+endif()
+
+vcpkg_check_features(
+    OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        codegen gRPC_BUILD_CODEGEN
 )
 
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS ${FEATURE_OPTIONS}
         -DgRPC_INSTALL=ON
+        -DgRPC_BUILD_TESTS=OFF
+        -DgRPC_STATIC_LINKING=${gRPC_STATIC_LINKING}
+        -DgRPC_MSVC_STATIC_RUNTIME=${gRPC_MSVC_STATIC_RUNTIME}
         -DgRPC_ZLIB_PROVIDER=package
         -DgRPC_SSL_PROVIDER=package
         -DgRPC_PROTOBUF_PROVIDER=package
+        -DgRPC_ABSL_PROVIDER=package
+        -DgRPC_UPB_PROVIDER=package
+        -DgRPC_RE2_PROVIDER=package
+        -DgRPC_PROTOBUF_PACKAGE_TYPE=CONFIG
+        -DgRPC_CARES_PROVIDER=${cares_CARES_PROVIDER}
+        -DgRPC_BENCHMARK_PROVIDER=none
+        -DgRPC_INSTALL_BINDIR:STRING=bin
+        -DgRPC_INSTALL_LIBDIR:STRING=lib
+        -DgRPC_INSTALL_INCLUDEDIR:STRING=include
+        -DgRPC_INSTALL_CMAKEDIR:STRING=share/grpc
+        "-D_gRPC_PROTOBUF_PROTOC_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/tools/protobuf/protoc${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+        "-DProtobuf_PROTOC_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/tools/protobuf/protoc${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+    MAYBE_UNUSED_VARIABLES
+        gRPC_MSVC_STATIC_RUNTIME
 )
 
-vcpkg_install_cmake()
+vcpkg_cmake_install(ADD_BIN_TO_PATH)
 
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/share/grpc)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/cmake/gRPC/gRPCConfig.cmake ${CURRENT_PACKAGES_DIR}/share/grpc/gRPCConfig.cmake)
-file(RENAME ${CURRENT_PACKAGES_DIR}/lib/cmake/gRPC/gRPCConfigVersion.cmake ${CURRENT_PACKAGES_DIR}/share/grpc/gRPCConfigVersion.cmake)
+vcpkg_cmake_config_fixup()
 
-# Update import target prefix in gRPCTargets.cmake
-file(READ ${CURRENT_PACKAGES_DIR}/lib/cmake/gRPC/gRPCTargets.cmake _contents)
-set(pattern "get_filename_component(_IMPORT_PREFIX \"\${_IMPORT_PREFIX}\" PATH)\n")
-string(REPLACE "${pattern}${pattern}" "${pattern}" _contents "${_contents}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/grpc/gRPCTargets.cmake "${_contents}")
+if (gRPC_BUILD_CODEGEN)
+    vcpkg_copy_tools(
+        AUTO_CLEAN
+        TOOL_NAMES
+            grpc_php_plugin
+            grpc_python_plugin
+            grpc_node_plugin
+            grpc_objective_c_plugin
+            grpc_csharp_plugin
+            grpc_cpp_plugin
+            grpc_ruby_plugin
+    )
+else()
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/gRPCTargets-vcpkg-tools.cmake" "${CURRENT_PACKAGES_DIR}/share/grpc/gRPCTargets-vcpkg-tools.cmake" @ONLY)
+endif()
 
-# Update paths in gRPCTargets-release.cmake
-file(READ ${CURRENT_PACKAGES_DIR}/lib/cmake/gRPC/gRPCTargets-release.cmake _contents)
-string(REPLACE "\${_IMPORT_PREFIX}/bin/" "\${_IMPORT_PREFIX}/tools/" _contents "${_contents}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/grpc/gRPCTargets-release.cmake "${_contents}")
-
-# Update paths in gRPCTargets-debug.cmake
-file(READ ${CURRENT_PACKAGES_DIR}/debug/lib/cmake/gRPC/gRPCTargets-debug.cmake _contents)
-string(REPLACE "\${_IMPORT_PREFIX}/bin/" "\${_IMPORT_PREFIX}/tools/" _contents "${_contents}")
-string(REPLACE "\${_IMPORT_PREFIX}/lib/" "\${_IMPORT_PREFIX}/debug/lib/" _contents "${_contents}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/grpc/gRPCTargets-debug.cmake "${_contents}")
-
-file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/grpc RENAME copyright)
-file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/tools)
-file(INSTALL ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/Release/grpc_cpp_plugin.exe DESTINATION ${CURRENT_PACKAGES_DIR}/tools)
-
-# Install tools and plugins
-file(
-    INSTALL ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/Release/
-    DESTINATION ${CURRENT_PACKAGES_DIR}/tools
-    FILES_MATCHING PATTERN "*.exe"
-)
-
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/bin)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/lib/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/lib/cmake)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share" "${CURRENT_PACKAGES_DIR}/debug/include")
 
 vcpkg_copy_pdbs()
+if (VCPKG_TARGET_IS_WINDOWS)
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/lib/pkgconfig" "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig")
+else()
+    vcpkg_fixup_pkgconfig()
+endif()
+
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

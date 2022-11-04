@@ -1,17 +1,43 @@
 #header-only library
-include(vcpkg_common_functions)
-SET(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/rapidjson-1.1.0)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/miloyip/rapidjson/archive/v1.1.0.zip"
-    FILENAME "rapidjson-v1.1.0.zip"
-    SHA512 4ddbf6dc5d943eb971e7a62910dd78d1cc5cc3016066a443f351d4276d2be3375ed97796e672c2aecd6990f0b332826f8c8ddc7d367193d7b82f0037f4e4012c
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO Tencent/rapidjson
+    REF 232389d4f1012dddec4ef84861face2d2ba85709 # accessed on 2022-06-28
+    SHA512 0d7d751179abdaa6ebf6167d522651a2d13bc024d20c7e3f775c7397a8aab4cd866a6c91a55521ad7847e910822fcf982625c7308c74f5df663e6fd81336c9fc
+    FILE_DISAMBIGUATOR 2
+    HEAD_REF master
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-# Put the licence file where vcpkg expects it
-file(COPY ${SOURCE_PATH}/license.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/rapidjson)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/rapidjson/license.txt ${CURRENT_PACKAGES_DIR}/share/rapidjson/copyright)
+# Use RapidJSON's own build process, skipping examples and tests
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DRAPIDJSON_BUILD_DOC=OFF
+        -DRAPIDJSON_BUILD_EXAMPLES=OFF
+        -DRAPIDJSON_BUILD_TESTS=OFF
+)
+vcpkg_cmake_install()
 
-# Copy the rapidjson header files
-file(INSTALL ${SOURCE_PATH}/include DESTINATION ${CURRENT_PACKAGES_DIR} FILES_MATCHING PATTERN "*.h")
-vcpkg_copy_pdbs()
+if(VCPKG_TARGET_IS_WINDOWS)
+    vcpkg_cmake_config_fixup(CONFIG_PATH cmake)
+else()
+    vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/RapidJSON)
+endif()
+
+vcpkg_fixup_pkgconfig()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/doc")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
+
+if(VCPKG_TARGET_IS_WINDOWS)
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug" "${CURRENT_PACKAGES_DIR}/lib")
+endif()
+
+file(READ "${CURRENT_PACKAGES_DIR}/share/${PORT}/RapidJSONConfig.cmake" _contents)
+string(REPLACE "\${RapidJSON_SOURCE_DIR}" "\${RapidJSON_CMAKE_DIR}/../.." _contents "${_contents}")
+string(REPLACE "set( RapidJSON_SOURCE_DIR \"${SOURCE_PATH}\")" "" _contents "${_contents}")
+string(REPLACE "set( RapidJSON_DIR \"${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel\")" "" _contents "${_contents}")
+string(REPLACE "\${RapidJSON_CMAKE_DIR}/../../../include" "\${RapidJSON_CMAKE_DIR}/../../include" _contents "${_contents}")
+file(WRITE "${CURRENT_PACKAGES_DIR}/share/${PORT}/RapidJSONConfig.cmake" "${_contents}\nset(RAPIDJSON_INCLUDE_DIRS \"\${RapidJSON_INCLUDE_DIRS}\")\n")
+
+file(INSTALL "${SOURCE_PATH}/license.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

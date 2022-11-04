@@ -1,16 +1,25 @@
 #header-only library
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/cereal-1.2.1)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/USCiLab/cereal/archive/v1.2.1.tar.gz"
-    FILENAME "cereal-1.2.1.tar.gz"
-    SHA512 f0050f27433a4b544e7785aa94fc7b14a57eed6d542e25d3d0fda4d27cf55ea55e796be2138bf80809c96c392436513fe42764b3a456938395bf7f7177dd1c73
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO USCiLab/cereal
+    REF v1.3.2
+    SHA512 98d306d6292789129675f1c5c5aedcb90cfcc1029c4482893a8f9b23f3c9755e5ed4762d7a528f215345cae6392e87cd8d89467115b6f031b41c8673d6b4b109
+    HEAD_REF master
 )
-vcpkg_extract_source_archive(${ARCHIVE})
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DJUST_INSTALL_CEREAL=ON
+)
+
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/cereal)
+
+# Clean
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/lib")
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/cereal)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/cereal/LICENSE ${CURRENT_PACKAGES_DIR}/share/cereal/copyright)
-
-# Copy the cereal header files
-file(COPY ${SOURCE_PATH}/include/cereal DESTINATION ${CURRENT_PACKAGES_DIR}/include)
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

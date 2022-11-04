@@ -1,34 +1,48 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/msmpi-8.0)
+set(MSMPI_VERSION "10.1.12498")
+set(SOURCE_PATH "${CURRENT_BUILDTREES_DIR}/src/msmpi-${MSMPI_VERSION}")
 
 vcpkg_download_distfile(SDK_ARCHIVE
-    URLS "https://download.microsoft.com/download/B/2/E/B2EB83FE-98C2-4156-834A-E1711E6884FB/msmpisdk.msi"
-    FILENAME "msmpisdk-8.0.msi"
-    SHA512 49c762873ba777ccb3c959a1d2ca1392e4c3c8d366e604ad707184ea432302e6649894ec6599162d0d40f3e6ebc0dada1eb9ca0da1cde0f6ba7a9b1847dac8c0
+    URLS "https://download.microsoft.com/download/a/5/2/a5207ca5-1203-491a-8fb8-906fd68ae623/msmpisdk.msi"
+    FILENAME "msmpisdk-${MSMPI_VERSION}-b0087dfd.msi"
+    SHA512 b0087dfd21423bf87b94b17d7cb03576838585371bbf8b03cca95c3ad73670108c7bc6517b0de852ef595072cc4143be2011636e7242bcb080394d94294848a7
 )
+
+
+#to enable CI, you should modify the following URL also in ${VCPKG_ROOT}/scripts/azure-pipelines/windows/provision-image.ps1
+macro(download_msmpi_redistributable_package)
+    vcpkg_download_distfile(REDIST_ARCHIVE
+        URLS "https://download.microsoft.com/download/a/5/2/a5207ca5-1203-491a-8fb8-906fd68ae623/msmpisetup.exe"
+        FILENAME "msmpisetup-${MSMPI_VERSION}.exe"
+        SHA512 1ee463e7dfc3e55a7ac048fdfde13fef09a5eea4b74d8fd7c22a7aad667a025b467ce939e5de308e25bbc186c3fe66e0e24ac03a3741656fc7558f2af2fa132a
+    )
+endmacro()
 
 ### Check for correct version of installed redistributable package
 
 # We always want the ProgramFiles folder even on a 64-bit machine (not the ProgramFilesx86 folder)
 vcpkg_get_program_files_platform_bitness(PROGRAM_FILES_PLATFORM_BITNESS)
 set(SYSTEM_MPIEXEC_FILEPATH "${PROGRAM_FILES_PLATFORM_BITNESS}/Microsoft MPI/Bin/mpiexec.exe")
-set(MSMPI_EXPECTED_FULL_VERSION "8.0.12438.0")
 
-if(EXISTS ${SYSTEM_MPIEXEC_FILEPATH})
+if(EXISTS "${SYSTEM_MPIEXEC_FILEPATH}")
     set(MPIEXEC_VERSION_LOGNAME "mpiexec-version")
     vcpkg_execute_required_process(
         COMMAND ${SYSTEM_MPIEXEC_FILEPATH}
-        WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}
+        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}"
         LOGNAME ${MPIEXEC_VERSION_LOGNAME}
     )
-    file(READ ${CURRENT_BUILDTREES_DIR}/${MPIEXEC_VERSION_LOGNAME}-out.log MPIEXEC_OUTPUT)
+    file(READ "${CURRENT_BUILDTREES_DIR}/${MPIEXEC_VERSION_LOGNAME}-out.log" MPIEXEC_OUTPUT)
 
-    if(${MPIEXEC_OUTPUT} MATCHES "\\[Version ([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)\\]")
-        if(NOT ${CMAKE_MATCH_1} STREQUAL ${MSMPI_EXPECTED_FULL_VERSION})
+    if(MPIEXEC_OUTPUT MATCHES "\\[Version ([0-9]+\\.[0-9]+\\.[0-9]+)\\.[0-9]+\\]")
+        if(NOT CMAKE_MATCH_1 STREQUAL MSMPI_VERSION)
+            download_msmpi_redistributable_package()
+
             message(FATAL_ERROR
                 "  The version of the installed MSMPI redistributable packages does not match the version to be installed\n"
-                "  Expected version: ${MSMPI_EXPECTED_FULL_VERSION}\n"
-                "  Found version: ${CMAKE_MATCH_1}\n")
+                "    Expected version: ${MSMPI_VERSION}\n"
+                "    Found version: ${CMAKE_MATCH_1}\n"
+                "  Please upgrade the installed version on your system.\n"
+                "  The appropriate installer for the expected version has been downloaded to:\n"
+                "    ${REDIST_ARCHIVE}\n")
         endif()
     else()
         message(FATAL_ERROR
@@ -38,11 +52,7 @@ if(EXISTS ${SYSTEM_MPIEXEC_FILEPATH})
             "    ${CURRENT_BUILDTREES_DIR}\\${MPIEXEC_VERSION_LOGNAME}-err.log\n")
     endif()
 else()
-    vcpkg_download_distfile(REDIST_ARCHIVE
-        URLS "https://download.microsoft.com/download/B/2/E/B2EB83FE-98C2-4156-834A-E1711E6884FB/MSMpiSetup.exe"
-        FILENAME "MSMpiSetup-8.0.exe"
-        SHA512 f5271255817f5417de8e432cd21e5ff3c617911a30b7777560c0ceb6f4031ace5fa88fc7675759ae0964bcf4e2076fe367a06c129f3a9ad06871a08bf95ed68b
-    )
+    download_msmpi_redistributable_package()
 
     message(FATAL_ERROR
         "  Could not find:\n"
@@ -56,9 +66,16 @@ file(TO_NATIVE_PATH "${SDK_ARCHIVE}" SDK_ARCHIVE)
 file(TO_NATIVE_PATH "${SOURCE_PATH}/sdk" SDK_SOURCE_DIR)
 file(TO_NATIVE_PATH "${CURRENT_BUILDTREES_DIR}/msiexec-${TARGET_TRIPLET}.log" MSIEXEC_LOG_PATH)
 
+set(PARAM_MSI "/a \"${SDK_ARCHIVE}\"")
+set(PARAM_LOG "/log \"${MSIEXEC_LOG_PATH}\"")
+set(PARAM_TARGET_DIR "TARGETDIR=\"${SDK_SOURCE_DIR}\"")
+set(SCRIPT_FILE "${CURRENT_BUILDTREES_DIR}/msiextract-msmpi.bat")
+# Write the command out to a script file and run that to avoid weird escaping behavior when spaces are present
+file(WRITE ${SCRIPT_FILE} "msiexec ${PARAM_MSI} /qn ${PARAM_LOG} ${PARAM_TARGET_DIR}")
+
 vcpkg_execute_required_process(
-    COMMAND msiexec /a ${SDK_ARCHIVE} /qn TARGETDIR=${SDK_SOURCE_DIR} /log "${MSIEXEC_LOG_PATH}"
-    WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}
+    COMMAND ${SCRIPT_FILE}
+    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}"
     LOGNAME extract-sdk
 )
 
@@ -75,45 +92,37 @@ file(INSTALL
         "${SOURCE_INCLUDE_PATH}/pmidbg.h"
         "${SOURCE_INCLUDE_PATH}/${TRIPLET_SYSTEM_ARCH}/mpifptr.h"
     DESTINATION
-        ${CURRENT_PACKAGES_DIR}/include
+        "${CURRENT_PACKAGES_DIR}/include"
 )
 
-# Install release libraries
-file(INSTALL
-        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpi.lib"
-        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifec.lib"
-        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifmc.lib"
-    DESTINATION
-        ${CURRENT_PACKAGES_DIR}/lib
-)
-if(${TRIPLET_SYSTEM_ARCH} STREQUAL "x86")
-    file(INSTALL
-            "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifes.lib"
-            "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifms.lib"
-        DESTINATION
-            ${CURRENT_PACKAGES_DIR}/lib
-    )
-endif()
-
-# Install debug libraries
-# NOTE: since the binary distribution does not include any debug libraries we simply install the release libraries
+# NOTE: since the binary distribution does not include any debug libraries we always install the release libraries
 SET(VCPKG_POLICY_ONLY_RELEASE_CRT enabled)
+
+file(GLOB STATIC_LIBS
+    "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifec.lib"
+    "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifmc.lib"
+    "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifes.lib"
+    "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifms.lib"
+)
+
 file(INSTALL
         "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpi.lib"
-        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifec.lib"
-        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifmc.lib"
-    DESTINATION
-        ${CURRENT_PACKAGES_DIR}/debug/lib
+    DESTINATION "${CURRENT_PACKAGES_DIR}/lib"
 )
-if(${TRIPLET_SYSTEM_ARCH} STREQUAL "x86")
-    file(INSTALL
-            "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifes.lib"
-            "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpifms.lib"
-        DESTINATION
-            ${CURRENT_PACKAGES_DIR}/debug/lib
-    )
+file(INSTALL
+        "${SOURCE_LIB_PATH}/${TRIPLET_SYSTEM_ARCH}/msmpi.lib"
+    DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib"
+)
+
+if(VCPKG_CRT_LINKAGE STREQUAL "static")
+    file(INSTALL ${STATIC_LIBS} DESTINATION "${CURRENT_PACKAGES_DIR}/lib")
+    file(INSTALL ${STATIC_LIBS} DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib")
 endif()
+
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/mpi-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
 
 # Handle copyright
-file(COPY "${SOURCE_PATH}/sdk/PFiles/Microsoft SDKs/MPI/License/license_sdk.rtf" DESTINATION ${CURRENT_PACKAGES_DIR}/share/msmpi)
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/msmpi/copyright "See the accompanying license_sdk.rtf")
+file(COPY "${SOURCE_PATH}/sdk/PFiles/Microsoft SDKs/MPI/License/MicrosoftMPI-SDK-EULA.rtf" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(COPY "${SOURCE_PATH}/sdk/PFiles/Microsoft SDKs/MPI/License/MPI-SDK-TPN.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+file(WRITE "${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright" "See the accompanying MicrosoftMPI-SDK-EULA.rtf and MPI-SDK-TPN.txt")
